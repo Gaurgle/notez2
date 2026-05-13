@@ -28,6 +28,7 @@ ratatui = "0.29"
 crossterm = "0.28"
 
 which = "7"
+walkdir = "2"
 
 [dev-dependencies]
 tempfile = "3"

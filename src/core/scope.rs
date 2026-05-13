@@ -15,7 +15,7 @@ use std::fmt;
 /// Derived from CLI flags: default = `Personal`, `-l` = `Local`,
 /// `-p` = `Public`, `-g` = `Global`. Flags are mutually exclusive; if more
 /// than one is given, the precedence is global > public > local > personal.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Scope {
     Local,
     Personal,

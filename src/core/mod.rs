@@ -1,5 +1,6 @@
 //! Core domain types: scope, project, note creation, scope resolution.
 
+pub mod aggregate;
 pub mod note;
 pub mod project;
 pub mod resolve;
