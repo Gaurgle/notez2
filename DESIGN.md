@@ -229,6 +229,177 @@ is fragile. The tree TUI sticks to the keyboard `m` keybind only.
 The two paths converge on the same internal move() function so behavior is
 identical regardless of input modality.
 
+## Test scenarios
+
+A representative matrix to validate behavior end-to-end. These are not unit
+tests; they exercise multi-machine, multi-user, multi-project realities the
+storage layer has to handle. Each scenario lists the setup and the
+properties that must hold.
+
+### Cast
+
+- **Alice**: works on two machines, **laptop** (username `alice`, home
+  `/Users/alice`) and **desktop** (username `alice-desk`, home
+  `/Users/alice-desk`). Has her own `~/notez/` repo on GitHub used as a
+  private notez remote.
+- **Bob**: works on a single machine **bobpc** (username `bob`). Has his
+  own local `~/notez/` repo with no remote.
+- **Carol** and **Dave**: each on one machine. Collaborate on a repo
+  Alice and Bob are not part of.
+
+### Repos
+
+- `shared-repo-1` and `shared-repo-2`: GitHub repos shared between Alice
+  and Bob (Carol and Dave have no access).
+- `cd-repo`: GitHub repo shared between Carol and Dave (Alice and Bob have
+  no access).
+
+### Scenario A. Alice writes a personal note about shared-repo-1 on laptop
+
+Setup: Alice has `shared-repo-1` cloned at `/Users/alice/repos/shared-repo-1`
+on laptop, and at `/Users/alice-desk/Repos/shared-repo-1` (capital R) on
+desktop. She has run `notez attach` inside the project on each machine.
+
+Action: on laptop, `cd ~/repos/shared-repo-1 && notez add "API redesign idea"`
+
+Verify:
+- File lands at `/Users/alice/notez/personal/shared-repo-1/00_quick-notes/<date>-api-redesign-idea.md`.
+- `~/notez/personal/shared-repo-1/` is tracked in Alice's notez repo.
+- After `notez sync` on laptop and again on desktop, the file appears at
+  `/Users/alice-desk/notez/personal/shared-repo-1/...` (note the different
+  home path).
+- The file is not visible inside `shared-repo-1`'s git tree on either
+  machine, so Bob cannot see it via the project remote.
+
+### Scenario B. Bob pushes a public note in shared-repo-1
+
+Action: Bob runs `notez -p add "deploy steps"` inside `shared-repo-1`,
+commits the new `notez/00_quick-notes/<date>-deploy-steps.md`, pushes.
+
+Verify:
+- Alice pulls the project on laptop and sees the file in
+  `~/repos/shared-repo-1/notez/00_quick-notes/...`.
+- `notez tree` on Alice's laptop shows the note under the Public scope for
+  `shared-repo-1`, with the team-globe icon.
+- Bob's same note is visible on Alice's desktop after she pulls there too.
+- The file is not touched by `notez sync`; it travels via the project's
+  git remote, not Alice's notez remote.
+
+### Scenario C. Alice writes a local scratch note
+
+Action: Alice on laptop runs `notez -l add "try this branch out"`.
+
+Verify:
+- File lands at `/Users/alice/repos/shared-repo-1/.notez/00_quick-notes/...`.
+- The `.notez/` directory is gitignored (notez ensures this on first write).
+- After `notez sync`: still only on laptop. Not synced to desktop, not
+  visible to Bob.
+- After `git pull` on desktop: not present (gitignored).
+
+### Scenario D. Bob and Alice both have personal notes for the same project
+
+Setup: both Bob and Alice have attached `shared-repo-1`. Each has their
+own `~/notez/personal/shared-repo-1/` directory in their own notez remote.
+
+Verify:
+- Alice's `notez tree` shows her personal notes only.
+- Bob's `notez tree` shows Bob's personal notes only.
+- Neither sees the other's personal notes anywhere.
+- Both can see the same public notes (Scenario B).
+
+### Scenario E. Alice's two machines have shared-repo-1 at different paths
+
+Setup: on laptop, registry has `shared-repo-1 = "~/repos/shared-repo-1"`.
+On desktop, registry has `shared-repo-1 = "~/Repos/shared-repo-1"`
+(capital R).
+
+Verify:
+- Registry differs between machines (it's per-machine and not synced).
+- Personal notes resolve correctly on each machine via tilde expansion
+  against the local home, producing different absolute paths but the
+  same project name.
+- No symlink ever points at a hardcoded absolute path.
+
+### Scenario F. Carol and Dave's project is invisible to Alice and Bob
+
+Setup: Carol and Dave each have `cd-repo` attached on their machines.
+Their `~/notez/` is sync'd between them. Alice has not cloned `cd-repo`.
+
+Verify:
+- Alice's `notez list` does not show `cd-repo`.
+- Alice's `notez tree` does not show notes from `cd-repo`.
+- Carol's `notez tree` shows her personal + public + local notes for `cd-repo`.
+- If Alice clones `cd-repo` and runs `notez attach`, it appears in her
+  registry. The public notes from Carol show up immediately. Carol's
+  personal notes do NOT appear (those live in Carol's notez remote, not
+  the project remote).
+
+### Scenario G. Carol shares cd-repo with Alice later
+
+Setup: Carol invites Alice to `cd-repo`. Alice clones it and runs
+`notez attach` to register it.
+
+Verify:
+- Alice sees all public notes Carol committed.
+- Alice does not see any of Carol's personal notes (those are in Carol's
+  own `~/notez/`, which Alice has no access to).
+- Alice can write her own personal notes about `cd-repo`. These land in
+  `~/notez/personal/cd-repo/` on Alice's machine and sync via Alice's
+  notez remote.
+- Carol cannot see Alice's personal notes about `cd-repo`.
+
+### Scenario H. Alice deletes a personal note on laptop, syncs
+
+Action: Alice deletes `~/notez/personal/shared-repo-1/<file>.md` on laptop
+and runs `notez sync` (which commits and pushes the deletion).
+
+Verify:
+- After `notez sync` on desktop, the file is gone there too.
+- Alice's project repo is not affected (the note was never in it).
+- Bob is unaffected (it was never in his clone or notez remote).
+
+### Scenario I. Project moved on one machine
+
+Action: Alice moves `~/repos/shared-repo-1/` to `~/Code/work/shared-repo-1/`
+on laptop. The registry still points at the old path.
+
+Verify:
+- `notez tree` warns about the missing project but does not crash.
+- `notez attach --path ~/Code/work/shared-repo-1 shared-repo-1` updates
+  the registry to the new path.
+- After that, everything resolves correctly again.
+- Other machines are unaffected (their registry is independent).
+
+### Scenario J. Conflict during notez sync
+
+Action: Alice writes a personal note on laptop and on desktop without
+syncing in between, then runs `notez sync` on both.
+
+Verify:
+- First machine's push succeeds.
+- Second machine's `git pull --rebase` surfaces a conflict.
+- `notez sync` does not silently lose data; it tells the user to resolve
+  the conflict manually in the notez repo and rerun.
+- After manual resolution, both notes coexist.
+
+### Scenario K. Public note moves to personal (future `notez mv`)
+
+Action: Alice realizes a public note in `shared-repo-1` should not have
+been shared. She runs `notez -p mv "leaked-thoughts" --to personal`.
+
+Verify:
+- File leaves `~/repos/shared-repo-1/notez/`.
+- File arrives at `~/notez/personal/shared-repo-1/00_quick-notes/`.
+- The history in `shared-repo-1`'s git is unchanged (Alice has to
+  separately rewrite that history if she wants the leak removed from
+  past commits; notez does not do this automatically).
+- After `notez sync` + a commit in `shared-repo-1`, the file is gone from
+  the public scope and synced via Alice's personal remote.
+
+These scenarios are the acceptance criteria for the storage layer. Each
+should eventually have an integration test (probably under `tests/`)
+that spins up tempdir fixtures simulating two machines and two users.
+
 ## Status
 
 This document describes the target design. Initial implementation focuses on:
