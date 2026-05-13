@@ -10,6 +10,9 @@
 
 #![allow(dead_code)]
 
+pub mod filter;
+pub mod tags;
+pub mod text;
 pub mod theme;
 
 use std::io::{Stdout, stdout};
