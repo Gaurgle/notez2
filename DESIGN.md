@@ -200,9 +200,34 @@ inside the todoz TUI:
 Both deferred until the TUI lands. The note-level `notez mv` could come
 sooner if needed; the todo-level move only makes sense once todoz exists.
 
-In an ideal world the TUI exposes one consistent "move scope" affordance
-that works on both notes (in the tree browser) and todos (in todoz),
-keeping muscle memory unified across the two views.
+### TUI interactions for moving
+
+The TUI should support both keyboard and mouse for the same operation, so
+users can pick whichever fits their flow:
+
+**Keyboard** (`m` keybind): opens a status-bar prompt
+```
+Move to: [l]ocal · [p]ersonal · [u]blic · [g]lobal · [esc] cancel
+```
+Single keystroke commits; cancel returns to navigation. Works in both
+the tree browser and todoz, on the currently selected row.
+
+**Mouse drag** (todoz, global view only): drag-and-drop already exists for
+reorder. Extending it across section boundaries triggers a scope move
+instead of a reorder when:
+
+- The drop target is in a different section than the source
+- That section corresponds to a different scope (local/personal/public/global)
+  or a different project entirely
+
+Visual cue: target section header highlights while dragging across it.
+Cancel by dropping back into the source section.
+
+For the tree browser, drag-and-drop across deeply-nested directory boundaries
+is fragile. The tree TUI sticks to the keyboard `m` keybind only.
+
+The two paths converge on the same internal move() function so behavior is
+identical regardless of input modality.
 
 ## Status
 
