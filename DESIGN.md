@@ -165,6 +165,45 @@ And produces:
 
 It does not touch the actual note files; it only re-writes the index layer. Old symlinks remain until the user deletes them. A `--clean` flag also removes the old symlinks after verifying every target is reachable via the new registry.
 
+## Open questions and future work
+
+### Scope migration (move notes/todos between scopes)
+
+Sometimes a note that started as personal should become public, or a local
+scratch should be lifted to personal so it follows you between machines.
+Two operations, two complexity profiles:
+
+**Note files**: a single `.md` file moves between scope directories.
+Straightforward `notez mv <pattern> --to <scope>` command. Side effects to
+think through:
+
+- `personal -> public`: the file now lives in the project repo, will be
+  committed next time the project is committed. Visible to teammates from
+  that commit onward.
+- `public -> personal`: the file leaves the project repo, but its history
+  is still there in past commits. Removing from history is a destructive
+  rewrite; offer `--rm-from-history` flag but only with strong warnings.
+- `personal -> global`: removes the project association, lands in the
+  user's cross-project notes.
+- `* -> local`: file becomes per-machine again, stops syncing entirely.
+
+**Todo entries**: each scope has its own `TODO.md`, with many entries per
+file. Moving a single entry between scopes is fundamentally different from
+moving a file - it is an edit operation, not a rename. Best done from
+inside the todoz TUI:
+
+- Press `m` on a selected todo: prompt "Move to: local / personal / public
+  / global / cancel"
+- Implementation: remove the line(s) from source TODO.md (subtree if it has
+  subtasks), append to target TODO.md, preserve tags and indent depth
+
+Both deferred until the TUI lands. The note-level `notez mv` could come
+sooner if needed; the todo-level move only makes sense once todoz exists.
+
+In an ideal world the TUI exposes one consistent "move scope" affordance
+that works on both notes (in the tree browser) and todos (in todoz),
+keeping muscle memory unified across the two views.
+
 ## Status
 
 This document describes the target design. Initial implementation focuses on:
