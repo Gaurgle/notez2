@@ -1,58 +1,54 @@
-//! Note scope: private, public, or global.
+//! Note scope: local, personal, public, or global.
 //!
 //! Every notez command resolves to a scope:
 //!
-//! - `Private`: under `<cwd>/.notez/`, auto-gitignored
-//! - `Public`: under `<cwd>/notez/`, committed with the project
-//! - `Global`: under `~/notez/`, the user's cross-project notes
+//! - `Local`: `<cwd>/.notez/`, gitignored. Per-machine scratch, never syncs.
+//! - `Personal`: `<notez_root>/personal/<project>/`. Your notes about this
+//!   project, synced via your own notez remote, invisible to teammates.
+//! - `Public`: `<cwd>/notez/`, committed with the project. Visible to the team.
+//! - `Global`: `<notez_root>/`. Cross-project notes, synced via your own remote.
 
 use std::fmt;
 
-/// The three note scopes.
+/// The four note scopes.
 ///
-/// Derived from CLI flags: default = `Private`, `-p` = `Public`, `-g` = `Global`.
+/// Derived from CLI flags: default = `Personal`, `-l` = `Local`,
+/// `-p` = `Public`, `-g` = `Global`. Flags are mutually exclusive; if more
+/// than one is given, the precedence is global > public > local > personal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Scope {
-    Private,
+    Local,
+    Personal,
     Public,
     Global,
 }
 
 impl Scope {
-    /// Resolve from the two boolean CLI flags `-g` and `-p`.
+    /// Resolve from CLI flags. Precedence: `-g` > `-p` > `-l` > default.
     ///
-    /// `-g` wins over `-p` (you can't have a "global public" scope; global
-    /// is its own thing). This matches notez-cli's behavior.
-    pub fn from_flags(global: bool, public: bool) -> Self {
+    /// Default (no flag) is `Personal`. Personal is the most common scope
+    /// in notez2: notes you write about a specific project, syncing across
+    /// your own machines but not visible to teammates.
+    pub fn from_flags(global: bool, public: bool, local: bool) -> Self {
         if global {
             Self::Global
         } else if public {
             Self::Public
+        } else if local {
+            Self::Local
         } else {
-            Self::Private
+            Self::Personal
         }
     }
 
-    /// The directory name relative to a project root.
-    ///
-    /// Returns `.notez` for private, `notez` for public. Global scope has no
-    /// project-relative directory (it lives at `~/notez/`); calling this on
-    /// `Global` returns `None`.
-    pub fn project_subdir(&self) -> Option<&'static str> {
-        match self {
-            Self::Private => Some(".notez"),
-            Self::Public => Some("notez"),
-            Self::Global => None,
-        }
-    }
-
-    /// Lock-icon for private, globe-icon for public/global.
-    ///
-    /// Uses the same nerdfont glyphs as notez-cli.
+    /// Nerdfont icon. Lock for local, user for personal, globe for public,
+    /// home for global.
     pub fn icon(&self) -> &'static str {
         match self {
-            Self::Private => "\u{f023}", // lock
-            Self::Public | Self::Global => "\u{f0ac}", // globe
+            Self::Local => "\u{f023}",    // lock
+            Self::Personal => "\u{f007}", // user
+            Self::Public => "\u{f0ac}",   // globe
+            Self::Global => "\u{f015}",   // home
         }
     }
 }
@@ -60,7 +56,8 @@ impl Scope {
 impl fmt::Display for Scope {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
-            Self::Private => "private",
+            Self::Local => "local",
+            Self::Personal => "personal",
             Self::Public => "public",
             Self::Global => "global",
         };
@@ -73,35 +70,51 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_is_private() {
-        assert_eq!(Scope::from_flags(false, false), Scope::Private);
+    fn default_is_personal() {
+        assert_eq!(Scope::from_flags(false, false, false), Scope::Personal);
+    }
+
+    #[test]
+    fn local_flag_picks_local() {
+        assert_eq!(Scope::from_flags(false, false, true), Scope::Local);
     }
 
     #[test]
     fn public_flag_picks_public() {
-        assert_eq!(Scope::from_flags(false, true), Scope::Public);
+        assert_eq!(Scope::from_flags(false, true, false), Scope::Public);
     }
 
     #[test]
     fn global_flag_picks_global() {
-        assert_eq!(Scope::from_flags(true, false), Scope::Global);
+        assert_eq!(Scope::from_flags(true, false, false), Scope::Global);
     }
 
     #[test]
-    fn global_wins_over_public() {
-        assert_eq!(Scope::from_flags(true, true), Scope::Global);
-    }
-
-    #[test]
-    fn project_subdirs() {
-        assert_eq!(Scope::Private.project_subdir(), Some(".notez"));
-        assert_eq!(Scope::Public.project_subdir(), Some("notez"));
-        assert_eq!(Scope::Global.project_subdir(), None);
+    fn precedence_global_over_public_over_local() {
+        assert_eq!(Scope::from_flags(true, true, true), Scope::Global);
+        assert_eq!(Scope::from_flags(false, true, true), Scope::Public);
+        assert_eq!(Scope::from_flags(false, false, true), Scope::Local);
     }
 
     #[test]
     fn icons_differ_per_scope() {
-        assert_ne!(Scope::Private.icon(), Scope::Public.icon());
-        assert_eq!(Scope::Public.icon(), Scope::Global.icon());
+        let icons: Vec<&str> = [Scope::Local, Scope::Personal, Scope::Public, Scope::Global]
+            .iter()
+            .map(|s| s.icon())
+            .collect();
+        // All four icons distinct.
+        for i in 0..icons.len() {
+            for j in (i + 1)..icons.len() {
+                assert_ne!(icons[i], icons[j], "scopes {} and {} share icon", i, j);
+            }
+        }
+    }
+
+    #[test]
+    fn display_strings() {
+        assert_eq!(format!("{}", Scope::Local), "local");
+        assert_eq!(format!("{}", Scope::Personal), "personal");
+        assert_eq!(format!("{}", Scope::Public), "public");
+        assert_eq!(format!("{}", Scope::Global), "global");
     }
 }

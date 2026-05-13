@@ -1,24 +1,12 @@
 //! `notez mkdir`: create a new subdirectory under the scope's root.
-//!
-//! Unlike notez-cli, notez2 does not allocate numbered prefixes. The user
-//! supplies the full directory name (sanitized). If the user wants the
-//! `NN_name` convention they can include the prefix themselves.
 
 use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
 
 use crate::config::Config;
-use crate::core::Scope;
+use crate::core::{Scope, resolve};
 use crate::util::sanitize;
-
-fn root_for(config: &Config, scope: Scope) -> Result<PathBuf> {
-    Ok(match scope {
-        Scope::Global => config.notez_root_path(),
-        Scope::Public => std::env::current_dir()?.join("notez"),
-        Scope::Private => std::env::current_dir()?.join(".notez"),
-    })
-}
 
 /// Create the directory. Returns its absolute path.
 pub fn run(name_words: Vec<String>, scope: Scope, config: &Config) -> Result<PathBuf> {
@@ -28,7 +16,7 @@ pub fn run(name_words: Vec<String>, scope: Scope, config: &Config) -> Result<Pat
         bail!("directory name cannot be empty");
     }
 
-    let root = root_for(config, scope)?;
+    let root = resolve::root(scope, config)?;
     let path = root.join(&cleaned);
     std::fs::create_dir_all(&path)
         .with_context(|| format!("failed to create directory {}", path.display()))?;

@@ -62,7 +62,7 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     };
 
-    let scope = Scope::from_flags(parsed.global, parsed.public);
+    let scope = Scope::from_flags(parsed.global, parsed.public, parsed.local);
 
     let result: anyhow::Result<()> = match cmd {
         Commands::Add { title, r#in, in_local }
@@ -243,18 +243,23 @@ fn print_help() {
     println!("  {}", overlay.apply_to("Scope flags:"));
     println!(
         "    {} {}",
-        sapphire.apply_to("-g"),
-        overlay.apply_to("global ~/notez/"),
+        sapphire.apply_to("(default)"),
+        overlay.apply_to("personal: ~/notez/personal/<project>/ (your notes, synced via your own remote)"),
+    );
+    println!(
+        "    {} {}",
+        sapphire.apply_to("-l"),
+        overlay.apply_to("local:    ./.notez/ (gitignored, this machine only)"),
     );
     println!(
         "    {} {}",
         sapphire.apply_to("-p"),
-        overlay.apply_to("public ./notez/ (committed)"),
+        overlay.apply_to("public:   ./notez/ (committed with the project, visible to team)"),
     );
     println!(
         "    {} {}",
-        sapphire.apply_to("(default)"),
-        overlay.apply_to("private ./.notez/ (gitignored)"),
+        sapphire.apply_to("-g"),
+        overlay.apply_to("global:   ~/notez/ (cross-project, synced via your own remote)"),
     );
     println!();
 }

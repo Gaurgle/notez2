@@ -3,6 +3,16 @@
 //! A `Project` is a named handle to a directory on the user's machine. The
 //! name is derived from the git repository toplevel (or the directory name
 //! if the path is not a git repo) and sanitized to a filesystem slug.
+//!
+//! Two flavors of detection:
+//!
+//! - [`Project::detect`] always returns a project. Outside a git repo it
+//!   falls back to the directory basename. Used for `attach`, where the
+//!   user explicitly opts in to registering whatever they're sitting in.
+//! - [`Project::try_detect`] returns `Option<Project>` and only succeeds
+//!   inside a git repo. Used by commands like `add` in personal scope:
+//!   if there is no git project, the command should fall back to global
+//!   rather than write to a wrong-named "personal" folder.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -19,28 +29,15 @@ pub struct Project {
 }
 
 impl Project {
-    /// Detect the project that owns `dir`.
+    /// Lossy detection: always returns a project.
     ///
     /// Order of resolution:
-    ///
-    /// 1. `git rev-parse --show-toplevel` to find the repo root. If it
-    ///    succeeds, the project root is the git toplevel and the name is the
-    ///    sanitized basename of that toplevel.
-    /// 2. Fall back to the basename of `dir` itself.
-    /// 3. If `dir` has no basename (root path), the name is `"unnamed"`.
+    /// 1. `git rev-parse --show-toplevel`
+    /// 2. Basename of `dir`
+    /// 3. `"unnamed"` if `dir` has no basename
     pub fn detect_from(dir: &Path) -> Self {
-        if let Some(toplevel) = git_toplevel(dir) {
-            if let Some(name) = toplevel
-                .file_name()
-                .map(|n| sanitize::name(&n.to_string_lossy()))
-            {
-                if !name.is_empty() {
-                    return Self {
-                        name,
-                        root: toplevel,
-                    };
-                }
-            }
+        if let Some(p) = Self::try_detect_from(dir) {
+            return p;
         }
 
         let name = dir
@@ -55,10 +52,30 @@ impl Project {
         }
     }
 
-    /// Detect from the current working directory.
+    /// Strict detection: returns `Some` only if `dir` is inside a git repo.
+    pub fn try_detect_from(dir: &Path) -> Option<Self> {
+        let toplevel = git_toplevel(dir)?;
+        let name = toplevel
+            .file_name()
+            .map(|n| sanitize::name(&n.to_string_lossy()))
+            .filter(|n| !n.is_empty())?;
+
+        Some(Self {
+            name,
+            root: toplevel,
+        })
+    }
+
+    /// Detect from the current working directory (always returns).
     pub fn detect() -> anyhow::Result<Self> {
         let cwd = std::env::current_dir()?;
         Ok(Self::detect_from(&cwd))
+    }
+
+    /// Detect from the current working directory only if inside a git repo.
+    pub fn try_detect() -> Option<Self> {
+        let cwd = std::env::current_dir().ok()?;
+        Self::try_detect_from(&cwd)
     }
 }
 
@@ -87,6 +104,16 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
 
+    fn git_init(path: &Path) {
+        Command::new("git")
+            .args(["init", "--quiet"])
+            .current_dir(path)
+            .stderr(Stdio::null())
+            .stdout(Stdio::null())
+            .status()
+            .unwrap();
+    }
+
     #[test]
     fn detect_outside_git_uses_dirname() {
         let dir = tempdir().unwrap();
@@ -111,22 +138,34 @@ mod tests {
     #[test]
     fn detect_inside_git_uses_toplevel() {
         let dir = tempdir().unwrap();
-        Command::new("git")
-            .args(["init", "--quiet"])
-            .current_dir(dir.path())
-            .stderr(Stdio::null())
-            .stdout(Stdio::null())
-            .status()
-            .unwrap();
+        git_init(dir.path());
 
         let nested = dir.path().join("src").join("commands");
         std::fs::create_dir_all(&nested).unwrap();
 
         let p = Project::detect_from(&nested);
-        // The project root is the git toplevel, not the nested dir.
-        // Compare canonical paths because macOS prefixes tempdirs with /private.
         assert_eq!(p.root.canonicalize().unwrap(), dir.path().canonicalize().unwrap());
-        // Name is the toplevel's basename, sanitized.
+        let expected_name = sanitize::name(
+            &dir.path().file_name().unwrap().to_string_lossy(),
+        );
+        assert_eq!(p.name, expected_name);
+    }
+
+    #[test]
+    fn try_detect_outside_git_returns_none() {
+        let dir = tempdir().unwrap();
+        let sub = dir.path().join("not-a-repo");
+        std::fs::create_dir(&sub).unwrap();
+
+        assert!(Project::try_detect_from(&sub).is_none());
+    }
+
+    #[test]
+    fn try_detect_inside_git_returns_some() {
+        let dir = tempdir().unwrap();
+        git_init(dir.path());
+
+        let p = Project::try_detect_from(dir.path()).unwrap();
         let expected_name = sanitize::name(
             &dir.path().file_name().unwrap().to_string_lossy(),
         );

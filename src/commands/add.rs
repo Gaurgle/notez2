@@ -6,31 +6,13 @@ use anyhow::{Context, Result};
 
 use crate::cli;
 use crate::config::Config;
-use crate::core::{Note, Scope};
-
-/// Where a new note should be written.
-fn target_dir(config: &Config, scope: Scope, _in_arg: Option<&str>, _in_local: bool) -> Result<PathBuf> {
-    // Today's scope: minimal implementation. `--in` and `--in-local` picker
-    // semantics will be wired in when fzf-integration lands.
-    let dir = match scope {
-        Scope::Global => config.quick_notes_path(),
-        Scope::Public => {
-            let cwd = std::env::current_dir()?;
-            cwd.join("notez").join(&config.paths.quick_notes_dir)
-        }
-        Scope::Private => {
-            let cwd = std::env::current_dir()?;
-            cwd.join(".notez").join(&config.paths.quick_notes_dir)
-        }
-    };
-    Ok(dir)
-}
+use crate::core::{Note, Scope, resolve};
 
 /// Write the new note to disk and return its absolute path.
 pub fn run(
     title_words: Vec<String>,
-    in_arg: Option<String>,
-    in_local: bool,
+    _in_arg: Option<String>,
+    _in_local: bool,
     scope: Scope,
     config: &Config,
 ) -> Result<PathBuf> {
@@ -38,7 +20,7 @@ pub fn run(
     let title = title.unwrap_or_else(|| "untitled".to_string());
 
     let note = Note::new(title, body);
-    let dir = target_dir(config, scope, in_arg.as_deref(), in_local)?;
+    let dir = resolve::quick_notes(scope, config)?;
     std::fs::create_dir_all(&dir)
         .with_context(|| format!("failed to create note dir {}", dir.display()))?;
 
@@ -83,9 +65,9 @@ mod tests {
     }
 
     #[test]
-    fn add_private_writes_under_dot_notez_in_cwd() {
+    #[serial_test::serial]
+    fn add_local_writes_under_dot_notez_in_cwd() {
         let cwd_holder = tempdir().unwrap();
-        // Temporarily change cwd to the temp dir.
         let saved = std::env::current_dir().unwrap();
         std::env::set_current_dir(cwd_holder.path()).unwrap();
 
@@ -93,17 +75,68 @@ mod tests {
             vec!["hello".into()],
             None,
             false,
-            Scope::Private,
+            Scope::Local,
             &Config::defaults(),
         );
 
-        // Restore cwd before asserting so a panic in assert doesn't leave the
-        // process in a weird state.
         std::env::set_current_dir(saved).unwrap();
 
         let path = result.unwrap();
         assert!(path.exists());
         assert!(path.to_string_lossy().contains("/.notez/00_quick-notes/"));
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn add_personal_falls_back_to_global_outside_git() {
+        let notez_root = tempdir().unwrap();
+        let config = config_in(notez_root.path());
+
+        let cwd = tempdir().unwrap();
+        let saved = std::env::current_dir().unwrap();
+        std::env::set_current_dir(cwd.path()).unwrap();
+
+        let result = run(vec!["hi".into()], None, false, Scope::Personal, &config);
+
+        std::env::set_current_dir(saved).unwrap();
+
+        let path = result.unwrap();
+        // No git project => personal falls back to the global notez_root.
+        let expected_parent = notez_root.path().join("00_quick-notes");
+        assert_eq!(path.parent().unwrap(), expected_parent);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn add_personal_inside_git_uses_personal_subdir() {
+        let notez_root = tempdir().unwrap();
+        let config = config_in(notez_root.path());
+
+        let project_dir = tempdir().unwrap();
+        std::process::Command::new("git")
+            .args(["init", "--quiet"])
+            .current_dir(project_dir.path())
+            .stderr(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .status()
+            .unwrap();
+
+        let saved = std::env::current_dir().unwrap();
+        std::env::set_current_dir(project_dir.path()).unwrap();
+        let result = run(vec!["note".into()], None, false, Scope::Personal, &config);
+        std::env::set_current_dir(saved).unwrap();
+
+        let path = result.unwrap();
+        assert!(
+            path.to_string_lossy().contains("/personal/"),
+            "expected path under personal/, got {:?}",
+            path,
+        );
+        assert!(
+            path.ends_with(std::path::Path::new("00_quick-notes")
+                .join(path.file_name().unwrap()))
+                || path.parent().unwrap().ends_with("00_quick-notes"),
+        );
     }
 
     #[test]

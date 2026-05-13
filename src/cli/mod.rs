@@ -18,13 +18,17 @@ pub struct Cli {
     #[arg(short = 'h', long = "help", global = true)]
     pub help: bool,
 
-    /// Use global `~/notez/` instead of local `./notez/`
+    /// Use global `~/notez/`
     #[arg(short = 'g', long = "global", global = true)]
     pub global: bool,
 
-    /// Use public `./notez/` instead of private `./.notez/`
+    /// Use public `./notez/` (committed with the project)
     #[arg(short = 'p', long = "public", global = true)]
     pub public: bool,
+
+    /// Use local `./.notez/` (gitignored, this machine only)
+    #[arg(short = 'l', long = "local", global = true)]
+    pub local: bool,
 
     /// Open the global directory picker, then launch yazi (alias for `nav`)
     #[arg(short = 'n', long = "nav", global = true)]

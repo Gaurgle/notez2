@@ -5,22 +5,7 @@ use std::path::PathBuf;
 use anyhow::{Context, Result, bail};
 
 use crate::config::Config;
-use crate::core::{Scope, note};
-
-fn target_dir(config: &Config, scope: Scope) -> Result<PathBuf> {
-    let dir = match scope {
-        Scope::Global => config.daily_logs_path(),
-        Scope::Public => {
-            let cwd = std::env::current_dir()?;
-            cwd.join("notez").join(&config.paths.daily_logs_dir)
-        }
-        Scope::Private => {
-            let cwd = std::env::current_dir()?;
-            cwd.join(".notez").join(&config.paths.daily_logs_dir)
-        }
-    };
-    Ok(dir)
-}
+use crate::core::{Scope, note, resolve};
 
 /// Append a log entry. Returns the file path written to.
 pub fn run(message_words: Vec<String>, scope: Scope, config: &Config) -> Result<PathBuf> {
@@ -29,7 +14,7 @@ pub fn run(message_words: Vec<String>, scope: Scope, config: &Config) -> Result<
         bail!("log message cannot be empty");
     }
 
-    let dir = target_dir(config, scope)?;
+    let dir = resolve::daily_logs(scope, config)?;
     std::fs::create_dir_all(&dir)
         .with_context(|| format!("failed to create log dir {}", dir.display()))?;
 
@@ -88,7 +73,26 @@ mod tests {
         let body = std::fs::read_to_string(&path).unwrap();
         assert!(body.contains(" - first"));
         assert!(body.contains(" - second"));
-        // Header still there.
         assert!(body.starts_with("# Daily Log - "));
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn personal_outside_git_falls_back_to_global() {
+        let notez_root = tempdir().unwrap();
+        let config = config_in(notez_root.path());
+
+        let cwd = tempdir().unwrap();
+        let saved = std::env::current_dir().unwrap();
+        std::env::set_current_dir(cwd.path()).unwrap();
+        let result = run(vec!["hi".into()], Scope::Personal, &config);
+        std::env::set_current_dir(saved).unwrap();
+
+        let path = result.unwrap();
+        // Personal fallback puts the log under <notez_root>/01_daily-logs/.
+        assert_eq!(
+            path.parent().unwrap(),
+            notez_root.path().join("01_daily-logs"),
+        );
     }
 }

@@ -1,7 +1,8 @@
-//! Core domain types: scope, project, note creation.
+//! Core domain types: scope, project, note creation, scope resolution.
 
 pub mod note;
 pub mod project;
+pub mod resolve;
 pub mod scope;
 
 pub use note::Note;

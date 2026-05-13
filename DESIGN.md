@@ -13,21 +13,50 @@ A from-scratch rewrite of [notez-cli](https://github.com/Gaurgle/notez-cli) with
 
 ## Storage model
 
-Three locations hold notes; the TUI aggregates them into one view at runtime.
+Four scopes. The TUI aggregates them into one view at runtime.
 
-**Per-project private** (`<project>/.notez/`, gitignored):
-- The project repo's own private notes
-- Auto-gitignored by `notez add` etc.
-- Travels nowhere by itself; lives entirely inside the project repo
+**Local** (`<project>/.notez/`, gitignored):
+- Per-machine scratch. Truly private, never syncs anywhere.
+- Falls back to `<cwd>/.notez/` even outside a git repo.
+- For ephemeral notes that don't need to follow you.
 
-**Per-project public** (`<project>/notez/`, committed):
-- Public notes shared with the team via the project's git remote
-- Travels with the project automatically
+**Personal** (`<notez_root>/personal/<project>/`, default scope):
+- Your notes about this specific project, synced via your own notez remote.
+- Invisible to teammates because they live in your `~/notez/` repo, not the
+  project's repo.
+- When you're inside a git project, this is the default for `notez add`.
+- Outside a git project, falls back to global (no project subdir).
 
-**Global** (`~/notez/`, has its own git remote):
-- Cross-project notes, daily logs, todoz categories, scratch pad
-- Synced between machines via `notez sync` (wraps `git pull --rebase && git push`)
-- Contains a `.notez-config.toml` metadata file (synced) with project display names, descriptions, tags
+**Public** (`<project>/notez/`, committed):
+- Public notes shared with the team via the project's git remote.
+- Travels with the project automatically.
+
+**Global** (`<notez_root>/`, has its own git remote):
+- Cross-project notes, daily logs, todoz categories, scratch pad.
+- Synced between machines via `notez sync` (wraps `git pull --rebase && git push`).
+- Contains a `.notez-config.toml` metadata file (synced) with project display
+  names, descriptions, tags.
+
+### Why personal exists
+
+In notez-cli, private project notes lived in `<project>/.notez/` and were
+mirrored into `~/notez/<project>/` via OS symlinks. The symlinks stored
+absolute paths, which broke when usernames or repo layouts differed between
+machines.
+
+Personal scope solves the same problem from the other direction: instead of
+trying to mirror project-local files into your synced home, the notes live
+in your synced home from the start. The project repo never knows about them.
+No symlinks, no encryption, no extra remotes to set up per project.
+
+### Scope flags
+
+| Flag | Scope | Where |
+|---|---|---|
+| _(default)_ | Personal | `<notez_root>/personal/<project>/` |
+| `-l` `--local` | Local | `<cwd>/.notez/` |
+| `-p` `--public` | Public | `<cwd>/notez/` |
+| `-g` `--global` | Global | `<notez_root>/` |
 
 ## Config files
 
