@@ -8,6 +8,7 @@ pub mod config;
 pub mod core;
 pub mod filter;
 pub mod tags;
+pub mod todo;
 pub mod util;
 
 pub use crate::config::{Config, NotezMetadata, ProjectRegistry};

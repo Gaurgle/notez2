@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/notez-core", "crates/notez-cli"]
+members = ["crates/notez-core", "crates/notez-cli", "app/src-tauri"]
 
 # Shared release profile for every workspace member (incl. the future Tauri app).
 [profile.release]
