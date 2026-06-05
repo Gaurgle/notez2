@@ -5,29 +5,29 @@
   let {
     task,
     subtasks = [],
-    width = 320,
   }: {
     task: TodoTask | null;
     subtasks?: TodoTask[];
-    width?: number;
   } = $props();
 
-  // Indent each descendant relative to the previewed task's depth.
   const baseDepth = $derived(task?.depth ?? 0);
 
-  function mark(state: string): string {
-    return state === "checked" ? "✓" : state === "half" ? "–" : "";
-  }
   function stateLabel(state: string): string {
-    return state === "checked" ? "done" : state === "half" ? "partial" : "pending";
+    return state === "checked" ? "done" : state === "half" ? "in progress" : "pending";
   }
+
+  // Subtask roll-up — an informative summary, not a re-render of the board.
+  const doneCount = $derived(subtasks.filter((s) => s.state === "checked").length);
+  const pct = $derived(
+    subtasks.length === 0 ? 0 : Math.round((doneCount / subtasks.length) * 100)
+  );
 </script>
 
-<aside class="preview" style="width:{width}px">
+<aside class="preview">
   {#if !task}
-    <div class="empty">Select a todo to preview it.</div>
+    <div class="empty">Select a todo to see a summary.</div>
   {:else}
-    <div class="ttl" class:done={task.state === "checked"}>{task.text}</div>
+    <div class="ttl">{task.text}</div>
 
     <div class="meta">
       <span class="badge {task.state}">{stateLabel(task.state)}</span>
@@ -44,19 +44,17 @@
       </div>
     {/if}
 
-    <div class="sec-label">Subtasks</div>
-    {#if subtasks.length === 0}
-      <div class="empty sm">No subtasks.</div>
-    {:else}
-      <ul class="checklist">
+    {#if subtasks.length > 0}
+      <div class="sec-label">Subtasks · {doneCount} of {subtasks.length} done</div>
+      <div class="bar"><span style="width:{pct}%"></span></div>
+      <ul class="sublist">
         {#each subtasks as s (s.id)}
           <li
-            class="ck"
-            class:done={s.state === "checked"}
-            style="padding-left:{(s.depth - baseDepth - 1) * 16}px"
+            class="sub"
+            class:muted={s.state === "checked"}
+            style="padding-left:{(s.depth - baseDepth - 1) * 14}px"
           >
-            <span class="box {s.state}">{mark(s.state)}</span>
-            <span class="txt">{s.text}</span>
+            {s.text}
           </li>
         {/each}
       </ul>
@@ -66,8 +64,8 @@
 
 <style>
   .preview {
-    flex-shrink: 0;
-    border-left: 1px solid var(--border);
+    flex: 1;
+    min-height: 0;
     background: rgba(18, 18, 28, 0.92);
     padding: 1rem;
     overflow-y: auto;
@@ -77,20 +75,12 @@
     color: var(--faint);
     margin-top: 1rem;
   }
-  .empty.sm {
-    margin-top: 0.4rem;
-    font-size: 0.78rem;
-  }
   .ttl {
     font-weight: 600;
     font-size: 0.95rem;
     line-height: 1.35;
     color: var(--text);
     word-break: break-word;
-  }
-  .ttl.done {
-    color: var(--faint);
-    text-decoration: line-through;
   }
   .meta {
     display: flex;
@@ -149,48 +139,34 @@
     letter-spacing: 0.05em;
     color: var(--faint);
   }
-  .checklist {
+  .bar {
+    margin-top: 0.4rem;
+    height: 5px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+  }
+  .bar span {
+    display: block;
+    height: 100%;
+    background: var(--accent-public);
+    border-radius: 3px;
+    transition: width 0.2s;
+  }
+  .sublist {
     list-style: none;
-    margin: 0.5rem 0 0;
+    margin: 0.6rem 0 0;
     padding: 0;
     display: flex;
     flex-direction: column;
     gap: 0.3rem;
   }
-  .ck {
-    display: flex;
-    align-items: center;
-    gap: 0.45rem;
-    color: var(--text);
+  .sub {
+    color: var(--subtext);
+    line-height: 1.3;
+    word-break: break-word;
   }
-  .ck.done .txt {
+  .sub.muted {
     color: var(--faint);
-    text-decoration: line-through;
-  }
-  .box {
-    width: 15px;
-    height: 15px;
-    flex-shrink: 0;
-    border: 1.5px solid var(--surface-active);
-    border-radius: 4px;
-    background: rgba(0, 0, 0, 0.2);
-    color: #11131a;
-    display: grid;
-    place-items: center;
-    font-size: 0.62rem;
-    font-weight: 800;
-  }
-  .box.checked {
-    background: var(--accent-public);
-    border-color: var(--accent-public);
-  }
-  .box.half {
-    background: var(--accent-global);
-    border-color: var(--accent-global);
-  }
-  .txt {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 </style>

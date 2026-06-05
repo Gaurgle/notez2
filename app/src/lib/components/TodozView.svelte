@@ -3,6 +3,7 @@
   import { Toggle } from "melt/builders";
   import TodoItem from "$lib/components/todo/TodoItem.svelte";
   import TodoPreview from "$lib/components/todo/TodoPreview.svelte";
+  import Calendar from "$lib/components/Calendar.svelte";
   import Inspector from "$lib/components/Inspector.svelte";
   import MachineAvatar from "$lib/components/MachineAvatar.svelte";
   import Resizer from "$lib/components/Resizer.svelte";
@@ -34,8 +35,8 @@
     onValueChange: (v) => (showInspector = v),
   });
 
-  let showPreview = $state(false);
-  let previewWidth = $state(320);
+  let showPreview = $state(true);
+  let previewWidth = $state(400);
   const previewToggle = new Toggle({
     value: () => showPreview,
     onValueChange: (v) => (showPreview = v),
@@ -573,8 +574,11 @@
       </div>
 
       {#if showPreview}
-        <Resizer get={() => previewWidth} set={(n) => (previewWidth = n)} dir={-1} min={240} max={700} />
-        <TodoPreview task={previewTask} subtasks={previewSubtasks} width={previewWidth} />
+        <Resizer get={() => previewWidth} set={(n) => (previewWidth = n)} dir={-1} min={280} max={760} />
+        <div class="preview-col" style="width:{previewWidth}px">
+          <TodoPreview task={previewTask} subtasks={previewSubtasks} />
+          <Calendar />
+        </div>
       {/if}
 
       {#if showInspector}
@@ -754,6 +758,14 @@
     min-height: 0;
     background: rgba(18, 18, 28, 0.92);
     padding-bottom: 1rem;
+  }
+  /* Right pane: detail card on top, calendar pinned below. */
+  .preview-col {
+    flex-shrink: 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    border-left: 1px solid var(--border);
   }
   .status {
     padding: 1rem;
