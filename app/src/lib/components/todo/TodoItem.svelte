@@ -153,8 +153,10 @@
     align-items: center;
     gap: 0.4rem;
     padding: 0 0.85rem 0 0.6rem;
-    min-height: 26px;
-    font-size: 0.85rem;
+    /* Fixed height (not min-height) so row spacing is fully deterministic —
+       it never shifts with content length, depth, or expand/collapse. */
+    height: 32px;
+    font-size: 0.82rem;
     cursor: default;
   }
   .row:not(.header):hover {
@@ -164,15 +166,14 @@
     background: color-mix(in srgb, var(--accent) 16%, transparent);
   }
 
-  /* Section headers */
+  /* Section headers — same type and height as a note row (just a touch
+     bolder), so notes and todos read identically. */
   .row.header {
-    min-height: 24px;
-    padding: 0.1rem 0.85rem 0.1rem 0.6rem;
-    color: var(--subtext);
-    font-weight: 700;
-    font-size: 0.68rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
+    height: 32px;
+    padding: 0 0.85rem 0 0.6rem;
+    color: var(--text);
+    font-weight: 600;
+    font-size: 0.82rem;
   }
   .row.header.selected {
     background: color-mix(in srgb, var(--accent) 14%, transparent);
