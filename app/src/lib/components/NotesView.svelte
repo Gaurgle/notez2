@@ -23,6 +23,8 @@
   } from "$lib/ipc";
   import type { NoteListItem, ProjectInfo, Scope } from "$lib/types";
 
+  let { active = true }: { active?: boolean } = $props();
+
   let notes = $state<NoteListItem[]>([]);
   let loading = $state(true);
   let error = $state<string | null>(null);
@@ -34,6 +36,7 @@
   let selectedPath = $state<string | null>(null);
   let selIndex = $state(0);
   let content = $state("");
+  let editorMode = $state<"read" | "edit">("read");
 
   let hoveredNote = $state<NoteListItem | null>(null);
   let previewContent = $state("");
@@ -89,13 +92,20 @@
       }
     } catch (e) {
       error = String(e);
+    } finally {
+      loading = false; // always reveal the list once notes have loaded
     }
   }
 
-  onMount(async () => {
-    await refresh();
-    await loadProjects();
-    loading = false;
+  onMount(() => {
+    // Hard safety net: never let the list sit on "Loading…" — reveal it within
+    // 1.5s no matter what happens with the IPC calls.
+    const fallback = setTimeout(() => (loading = false), 1500);
+    refresh().finally(() => {
+      clearTimeout(fallback);
+      loading = false;
+    });
+    loadProjects(); // parallel, non-blocking
   });
 
   async function loadProjects() {
@@ -171,6 +181,7 @@
 
   $effect(() => {
     function onKey(e: KeyboardEvent) {
+      if (!active) return; // only the visible view handles keys
       if (isTyping(e.target)) {
         if (e.key === "Escape") (e.target as HTMLElement).blur();
         return;
@@ -201,11 +212,12 @@
         selIndex = filtered.length - 1;
         selectAt();
       } else if (e.key === "l" || e.key === "ArrowRight") {
-        // Step into the editor to edit the current note.
+        // Step into the editor (edit mode) for the current note.
         if (previewing && hoveredNote) select(hoveredNote);
+        editorMode = "edit";
         setTimeout(
           () => (document.querySelector(".cm-content") as HTMLElement | null)?.focus(),
-          0
+          30
         );
         e.preventDefault();
       } else if (e.key >= "1" && e.key <= "5") {
@@ -293,9 +305,7 @@
 
     <div class="panes">
       <div class="list-col">
-        {#if loading}
-          <div class="status">Loading notes…</div>
-        {:else if error}
+        {#if error}
           <div class="status error">{error}</div>
         {:else}
           <NoteList notes={filtered} {selectedPath} onSelect={select} {onHover} />
@@ -307,6 +317,7 @@
         content={editorContent}
         dim={previewing}
         editable={!previewing}
+        bind:mode={editorMode}
         {onSave}
       />
 

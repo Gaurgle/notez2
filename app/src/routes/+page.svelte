@@ -48,11 +48,13 @@
   </nav>
 
   <main class="content">
-    {#if mode === "notes"}
-      <NotesView />
-    {:else}
-      <TodozView />
-    {/if}
+    <!-- Both views stay mounted so switching tabs preserves selection/scroll. -->
+    <div class="view" class:hidden={mode !== "notes"}>
+      <NotesView active={mode === "notes"} />
+    </div>
+    <div class="view" class:hidden={mode !== "todoz"}>
+      <TodozView active={mode === "todoz"} />
+    </div>
   </main>
 </div>
 
@@ -107,5 +109,11 @@
     flex: 1;
     min-width: 0;
     overflow: hidden;
+  }
+  .view {
+    height: 100%;
+  }
+  .view.hidden {
+    display: none;
   }
 </style>

@@ -19,6 +19,8 @@
   import type { TodoTask } from "$lib/types";
   import { TAG_DEFS } from "$lib/types";
 
+  let { active = true }: { active?: boolean } = $props();
+
   /** Resolve a `#token` (without `#`) into a tag bitset, like the CLI:
    *  empty → all, digits → those 1-based tags (OR), else name-prefix match. */
   function tagTokenBits(tok: string): number {
@@ -281,6 +283,7 @@
   }
 
   async function handleKey(e: KeyboardEvent) {
+    if (!active) return; // only the visible view handles keys
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
     // Modal states intercept everything.
