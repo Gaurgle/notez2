@@ -385,13 +385,13 @@
         {sortMode === "latest" ? "Latest" : sortMode === "oldest" ? "Oldest" : "Name"}
       </button>
       <div class="spacer"></div>
-      <button class="switch" class:on={previewToggle.value} {...previewToggle.trigger} title="Preview (p)">
-        <span class="knob"></span>Preview
+      <button class="ghost" class:on={previewToggle.value} {...previewToggle.trigger} title="Preview (p)">
+        Preview
       </button>
-      <button class="switch" class:on={inspectorToggle.value} {...inspectorToggle.trigger} title="Inspector (i)">
-        <span class="knob"></span>Inspector
+      <button class="ghost" class:on={inspectorToggle.value} {...inspectorToggle.trigger} title="Inspector (i)">
+        Inspector
       </button>
-      <button class="primary" onclick={() => (showNewNote = true)}>+ New</button>
+      <button class="ghost" onclick={() => (showNewNote = true)}>+ New</button>
       <button class="ghost" onclick={() => (showLog = true)}>Log</button>
       <button class="ghost" onclick={doSync} disabled={syncing}>
         {syncing ? "Syncing…" : "Sync"}
@@ -458,8 +458,8 @@
       {#if selectedPath}
         <span class="sb-count">{content.length} chars · {wordCount} words</span>
       {/if}
-      <button class="switch" class:on={vimToggle.value} {...vimToggle.trigger} title="Toggle vim mode (Ctrl+;)">
-        <span class="knob"></span>VIM
+      <button class="vim-pill" class:on={vimToggle.value} {...vimToggle.trigger} title="Toggle vim mode (Ctrl+;)">
+        VIM
       </button>
     </div>
   </div>
@@ -597,6 +597,22 @@
   .sb-count {
     color: var(--subtext);
     white-space: nowrap;
+  }
+  .vim-pill {
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    padding: 0.12rem 0.55rem;
+    border-radius: 0.6rem;
+    border: 1px solid var(--border);
+    background: var(--glass-hover);
+    color: var(--faint);
+    cursor: pointer;
+  }
+  .vim-pill.on {
+    color: var(--accent-public);
+    background: color-mix(in srgb, var(--accent-public) 14%, transparent);
+    border-color: color-mix(in srgb, var(--accent-public) 32%, transparent);
   }
   .sortbtn {
     padding: 0.42rem 0.7rem;
