@@ -37,6 +37,7 @@ pub fn run() {
             commands::attach_project,
             commands::detach_project,
             commands::sync,
+            commands::machine_name,
             commands::migrate_preview,
             commands::migrate_apply,
             commands::create_note,
