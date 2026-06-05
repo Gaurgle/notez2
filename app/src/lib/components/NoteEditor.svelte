@@ -5,9 +5,7 @@
   import { markdown } from "@codemirror/lang-markdown";
   import { languages } from "@codemirror/language-data";
   import { oneDark } from "@codemirror/theme-one-dark";
-  import MarkdownIt from "markdown-it";
-  import hljs from "highlight.js";
-  import "highlight.js/styles/atom-one-dark.css";
+  import { vim, getCM } from "@replit/codemirror-vim";
 
   let {
     path,
@@ -15,52 +13,23 @@
     onSave,
     dim = false,
     editable = true,
-    mode = $bindable<"read" | "edit">("read"),
+    vimMode = false,
+    onVimMode,
   }: {
     path: string | null;
     content: string;
     onSave: (content: string) => void;
     dim?: boolean;
     editable?: boolean;
-    mode?: "read" | "edit";
+    vimMode?: boolean;
+    onVimMode?: (mode: string) => void;
   } = $props();
-
-  function escapeHtml(s: string): string {
-    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  }
-
-  // Read-mode renderer: markdown-it + highlight.js for fenced code blocks.
-  const md = new MarkdownIt({
-    html: false,
-    linkify: true,
-    breaks: false,
-    highlight: (str: string, lang: string): string => {
-      if (lang && hljs.getLanguage(lang)) {
-        try {
-          return `<pre class="hljs"><code>${hljs.highlight(str, { language: lang, ignoreIllegals: true }).value}</code></pre>`;
-        } catch {
-          /* fall through */
-        }
-      }
-      return `<pre class="hljs"><code>${escapeHtml(str)}</code></pre>`;
-    },
-  });
 
   let host = $state<HTMLDivElement>();
   let view: EditorView | undefined;
   let applyingExternal = false;
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
   let saved = $state(true);
-
-  // Preview (non-editable) is always rendered; otherwise honor the toggle.
-  let effectiveMode = $derived(!editable ? "read" : mode);
-  let rendered = $derived(md.render(content || "*empty note*"));
-
-  // Each freshly opened note starts in read mode.
-  $effect(() => {
-    path;
-    mode = "read";
-  });
 
   function scheduleSave(doc: string) {
     saved = false;
@@ -72,37 +41,49 @@
   }
 
   function buildState(doc: string): EditorState {
-    return EditorState.create({
-      doc,
-      extensions: [
-        lineNumbers(),
-        history(),
-        keymap.of([...defaultKeymap, ...historyKeymap]),
-        EditorView.lineWrapping,
-        markdown({ codeLanguages: languages }),
-        oneDark,
-        EditorView.updateListener.of((u) => {
-          if (u.docChanged && !applyingExternal) scheduleSave(u.state.doc.toString());
-        }),
-      ],
-    });
+    // vim() must come first so its keymap takes precedence.
+    const base = vimMode ? [vim()] : [];
+    base.push(lineNumbers(), EditorView.lineWrapping, markdown({ codeLanguages: languages }), oneDark);
+    if (!editable) {
+      base.push(EditorState.readOnly.of(true), EditorView.editable.of(false));
+      return EditorState.create({ doc, extensions: base });
+    }
+    base.push(
+      history(),
+      keymap.of([...defaultKeymap, ...historyKeymap]),
+      EditorView.updateListener.of((u) => {
+        if (u.docChanged && !applyingExternal) scheduleSave(u.state.doc.toString());
+      })
+    );
+    return EditorState.create({ doc, extensions: base });
   }
 
-  // Build / tear down the CodeMirror view as edit mode and content change.
   $effect(() => {
-    effectiveMode;
-    content;
-    if (effectiveMode !== "edit" || !host) {
-      view?.destroy();
-      view = undefined;
-      return;
-    }
-    const state = buildState(content);
+    // Read both reactive inputs up front so they're always tracked, even on
+    // the first run when `host` isn't bound yet.
+    const doc = content;
+    const ed = editable;
+    const vm = vimMode;
+    void ed;
+    void vm;
+    if (!host) return;
+    // Recreate the view on each content/editable change — robust against
+    // container-size/measure timing issues from `setState`.
+    view?.destroy();
     applyingExternal = true;
-    if (!view) view = new EditorView({ state, parent: host });
-    else view.setState(state);
+    view = new EditorView({ state: buildState(doc), parent: host });
     applyingExternal = false;
     saved = true;
+
+    if (vm && editable) {
+      const cm = getCM(view);
+      onVimMode?.("normal");
+      cm?.on("vim-mode-change", (e: { mode: string; subMode?: string }) => {
+        onVimMode?.(e.subMode ? `${e.mode}-${e.subMode}` : e.mode);
+      });
+    } else {
+      onVimMode?.("");
+    }
   });
 
   $effect(() => () => {
@@ -118,28 +99,10 @@
       {#if dim}
         <span class="preview-tag">preview</span>
       {:else}
-        <button class="mode-toggle" onclick={() => (mode = mode === "read" ? "edit" : "read")}>
-          {mode === "read" ? "✎ Edit" : "👁 Read"}
-        </button>
-        {#if mode === "edit"}
-          <span class="save-state" class:dirty={!saved}>{saved ? "saved" : "saving…"}</span>
-        {/if}
+        <span class="save-state" class:dirty={!saved}>{saved ? "saved" : "saving…"}</span>
       {/if}
     </div>
-
-    {#if effectiveMode === "edit"}
-      <div class="editor" bind:this={host}></div>
-    {:else}
-      <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
-      <div
-        class="markdown-body"
-        ondblclick={() => {
-          if (editable) mode = "edit";
-        }}
-      >
-        {@html rendered}
-      </div>
-    {/if}
+    <div class="editor" bind:this={host}></div>
   {:else}
     <div class="editor-empty">Select a note, or create one with “+ New”.</div>
   {/if}
@@ -167,19 +130,6 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-  }
-  .mode-toggle {
-    background: var(--glass-hover);
-    border: 1px solid var(--border);
-    border-radius: 0.4rem;
-    color: var(--text);
-    font: inherit;
-    font-size: 0.7rem;
-    padding: 0.2rem 0.55rem;
-    cursor: pointer;
-  }
-  .mode-toggle:hover {
-    background: var(--glass-active);
   }
   .save-state {
     font-size: 0.68rem;
@@ -215,8 +165,7 @@
     border-right: none;
     color: var(--faint);
   }
-  .editor-pane.dim .editor,
-  .editor-pane.dim .markdown-body {
+  .editor-pane.dim .editor {
     opacity: 0.5;
   }
   .editor-empty {
@@ -225,97 +174,5 @@
     height: 100%;
     color: var(--subtext);
     font-size: 0.85rem;
-  }
-
-  /* Rendered markdown */
-  .markdown-body {
-    flex: 1;
-    overflow-y: auto;
-    min-height: 0;
-    padding: 1.25rem 1.75rem;
-    font-size: 0.92rem;
-    line-height: 1.65;
-    color: var(--text);
-  }
-  .markdown-body :global(h1),
-  .markdown-body :global(h2),
-  .markdown-body :global(h3) {
-    margin: 1.2rem 0 0.6rem;
-    line-height: 1.25;
-    font-weight: 700;
-  }
-  .markdown-body :global(h1) {
-    font-size: 1.5rem;
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 0.3rem;
-  }
-  .markdown-body :global(h2) {
-    font-size: 1.25rem;
-  }
-  .markdown-body :global(h3) {
-    font-size: 1.08rem;
-  }
-  .markdown-body :global(p) {
-    margin: 0.6rem 0;
-  }
-  .markdown-body :global(a) {
-    color: var(--accent-local);
-    text-decoration: none;
-  }
-  .markdown-body :global(a:hover) {
-    text-decoration: underline;
-  }
-  .markdown-body :global(ul),
-  .markdown-body :global(ol) {
-    margin: 0.5rem 0;
-    padding-left: 1.5rem;
-  }
-  .markdown-body :global(li) {
-    margin: 0.2rem 0;
-  }
-  .markdown-body :global(code) {
-    background: rgba(255, 255, 255, 0.08);
-    padding: 0.1rem 0.35rem;
-    border-radius: 0.3rem;
-    font-family: ui-monospace, "SF Mono", monospace;
-    font-size: 0.85em;
-  }
-  .markdown-body :global(pre) {
-    background: rgba(0, 0, 0, 0.4) !important;
-    border: 1px solid var(--border);
-    border-radius: 0.5rem;
-    padding: 0.85rem 1rem;
-    overflow-x: auto;
-    margin: 0.75rem 0;
-  }
-  .markdown-body :global(pre code) {
-    background: none;
-    padding: 0;
-    font-size: 0.82rem;
-    line-height: 1.5;
-  }
-  .markdown-body :global(blockquote) {
-    border-left: 3px solid var(--accent);
-    margin: 0.75rem 0;
-    padding: 0.1rem 0 0.1rem 1rem;
-    color: var(--subtext);
-  }
-  .markdown-body :global(hr) {
-    border: none;
-    border-top: 1px solid var(--border);
-    margin: 1.25rem 0;
-  }
-  .markdown-body :global(table) {
-    border-collapse: collapse;
-    margin: 0.75rem 0;
-  }
-  .markdown-body :global(th),
-  .markdown-body :global(td) {
-    border: 1px solid var(--border);
-    padding: 0.35rem 0.6rem;
-  }
-  .markdown-body :global(img) {
-    max-width: 100%;
-    border-radius: 0.4rem;
   }
 </style>

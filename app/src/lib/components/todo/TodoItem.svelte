@@ -147,11 +147,9 @@
     align-items: center;
     gap: 0.4rem;
     padding: 0 0.85rem 0 0.6rem;
-    min-height: 30px;
-    font-size: 0.86rem;
+    min-height: 26px;
+    font-size: 0.85rem;
     cursor: default;
-    border-radius: 6px;
-    margin: 0 0.35rem;
   }
   .row:not(.header):hover {
     background: rgba(255, 255, 255, 0.035);
@@ -162,14 +160,13 @@
 
   /* Section headers */
   .row.header {
-    margin: 0.4rem 0.35rem 0.1rem;
-    padding: 0.3rem 0.6rem;
+    min-height: 24px;
+    padding: 0.1rem 0.85rem 0.1rem 0.6rem;
     color: var(--subtext);
     font-weight: 700;
-    font-size: 0.66rem;
+    font-size: 0.68rem;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    border-radius: 6px;
   }
   .row.header.selected {
     background: color-mix(in srgb, var(--accent) 14%, transparent);
@@ -253,7 +250,7 @@
 
   .caret,
   .caret-spacer {
-    width: 16px;
+    width: 20px;
     flex-shrink: 0;
     text-align: center;
   }
@@ -262,11 +259,14 @@
     border: none;
     color: var(--subtext);
     cursor: pointer;
-    font-size: 0.72rem;
+    font-size: 1.25rem;
     line-height: 1;
     padding: 0;
   }
   .caret:hover {
+    color: var(--accent);
+  }
+  .row.header .caret {
     color: var(--text);
   }
 

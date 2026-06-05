@@ -6,6 +6,8 @@ export interface NoteListItem {
   scope: Scope;
   project: string | null;
   flags: number;
+  /** Last-modified time, seconds since the Unix epoch. */
+  modified: number;
 }
 
 export const SCOPE_META: Record<Scope, { label: string; icon: string }> = {

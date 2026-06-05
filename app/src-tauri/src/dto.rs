@@ -23,16 +23,25 @@ pub struct NoteListItem {
     pub project: Option<String>,
     /// 5-bit importance tag flags from the root `.tags` file.
     pub flags: u8,
+    /// Last-modified time, seconds since the Unix epoch (0 if unavailable).
+    pub modified: u64,
 }
 
 impl From<&NoteEntry> for NoteListItem {
     fn from(entry: &NoteEntry) -> Self {
+        let modified = std::fs::metadata(&entry.path)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
         Self {
             path: entry.path.to_string_lossy().into_owned(),
             name: entry.name.clone(),
             scope: entry.scope,
             project: entry.project.clone(),
             flags: 0,
+            modified,
         }
     }
 }

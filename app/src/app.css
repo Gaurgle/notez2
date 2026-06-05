@@ -252,3 +252,8 @@ button.ghost {
 button.ghost:hover {
   background: var(--glass-active);
 }
+button.ghost.on {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}

@@ -6,15 +6,17 @@
     scope = null,
     flags = 0,
     rows = [],
+    width = 250,
   }: {
     title: string | null;
     scope?: string | null;
     flags?: number;
     rows?: { label: string; value: string }[];
+    width?: number;
   } = $props();
 </script>
 
-<aside class="inspector">
+<aside class="inspector" style="width:{width}px">
   {#if !title}
     <div class="empty">Hover or select an item to inspect it.</div>
   {:else}
@@ -43,7 +45,6 @@
 
 <style>
   .inspector {
-    width: 260px;
     flex-shrink: 0;
     border-left: 1px solid var(--border);
     background: var(--mantle);
@@ -60,8 +61,6 @@
     font-weight: 700;
     font-size: 0.95rem;
     line-height: 1.3;
-    /* Always reserve exactly two rows so the panel never resizes with the
-       title length; longer titles clamp with an ellipsis. */
     height: 2.6em;
     display: -webkit-box;
     -webkit-line-clamp: 2;

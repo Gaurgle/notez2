@@ -12,6 +12,7 @@
     onAttach,
     onDetach,
     onMigrate,
+    width = 220,
   }: {
     notes: NoteListItem[];
     activeScope: Scope | "all";
@@ -22,9 +23,8 @@
     onAttach: () => void;
     onDetach: (name: string) => void;
     onMigrate: () => void;
+    width?: number;
   } = $props();
-
-  const scopes: (Scope | "all")[] = ["all", "personal", "public", "local", "global"];
 
   function countFor(scope: Scope | "all"): number {
     return scope === "all"
@@ -33,24 +33,55 @@
   }
 </script>
 
-<aside class="sidebar">
+<aside class="sidebar" style="width:{width}px">
   <div class="brand">notez</div>
 
   <nav class="group">
     <div class="group-label">Scopes</div>
-    {#each scopes as scope (scope)}
-      <button
-        class="item"
-        class:active={activeScope === scope}
-        onclick={() => onScope(scope)}
-      >
-        {#if scope !== "all"}<span class="dot {scope}"></span>{/if}
-        <span class="item-label">
-          {scope === "all" ? "All notes" : SCOPE_META[scope].label}
-        </span>
-        <span class="count">{countFor(scope)}</span>
-      </button>
-    {/each}
+    <button
+      class="item"
+      class:active={activeProject === null && activeScope === "all"}
+      onclick={() => onScope("all")}
+    >
+      <span class="item-label">All notes</span>
+      <span class="count">{countFor("all")}</span>
+    </button>
+    <button
+      class="item"
+      class:active={activeProject === null && activeScope === "personal"}
+      onclick={() => onScope("personal")}
+    >
+      <span class="dot personal"></span>
+      <span class="item-label">{SCOPE_META.personal.label}</span>
+      <span class="count">{countFor("personal")}</span>
+    </button>
+    <button
+      class="item"
+      class:active={activeProject === null && activeScope === "public"}
+      onclick={() => onScope("public")}
+    >
+      <span class="dot public"></span>
+      <span class="item-label">{SCOPE_META.public.label}</span>
+      <span class="count">{countFor("public")}</span>
+    </button>
+    <button
+      class="item"
+      class:active={activeProject === null && activeScope === "local"}
+      onclick={() => onScope("local")}
+    >
+      <span class="dot local"></span>
+      <span class="item-label">{SCOPE_META.local.label}</span>
+      <span class="count">{countFor("local")}</span>
+    </button>
+    <button
+      class="item"
+      class:active={activeProject === null && activeScope === "global"}
+      onclick={() => onScope("global")}
+    >
+      <span class="dot global"></span>
+      <span class="item-label">{SCOPE_META.global.label}</span>
+      <span class="count">{countFor("global")}</span>
+    </button>
   </nav>
 
   <nav class="group">
@@ -61,13 +92,6 @@
     {#if registeredProjects.length === 0}
       <div class="muted">none attached</div>
     {:else}
-      <button
-        class="item"
-        class:active={activeProject === null}
-        onclick={() => onProject(null)}
-      >
-        <span class="item-label">All projects</span>
-      </button>
       {#each registeredProjects as p (p.name)}
         <div class="proj-row">
           <button
@@ -89,12 +113,14 @@
 
 <style>
   .sidebar {
+    flex-shrink: 0;
     background: var(--glass);
     -webkit-backdrop-filter: var(--blur);
     backdrop-filter: var(--blur);
     border-right: 1px solid var(--border);
     padding: 0.5rem;
     overflow-y: auto;
+    overflow-x: hidden;
     display: flex;
     flex-direction: column;
     gap: 1rem;

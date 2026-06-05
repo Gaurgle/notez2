@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import TodoItem from "$lib/components/todo/TodoItem.svelte";
   import Inspector from "$lib/components/Inspector.svelte";
+  import Resizer from "$lib/components/Resizer.svelte";
   import {
     loadTodoBoard,
     toggleTask,
@@ -20,6 +21,10 @@
   import { TAG_DEFS } from "$lib/types";
 
   let { active = true }: { active?: boolean } = $props();
+
+  let showInspector = $state(typeof window === "undefined" || window.innerWidth >= 1100);
+  let inspectorWidth = $state(250);
+  let sidebarWidth = $state(220);
 
   /** Resolve a `#token` (without `#`) into a tag bitset, like the CLI:
    *  empty → all, digits → those 1-based tags (OR), else name-prefix match. */
@@ -284,7 +289,14 @@
 
   async function handleKey(e: KeyboardEvent) {
     if (!active) return; // only the visible view handles keys
-    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+      if (e.key === "Escape") (e.target as HTMLElement).blur(); // exit the search box
+      return;
+    }
+    if (e.key === "i" && !showHelp && confirmDeleteId === null && !categoryMode) {
+      showInspector = !showInspector;
+      return;
+    }
 
     // Modal states intercept everything.
     if (showHelp) {
@@ -402,7 +414,7 @@
 </script>
 
 <div class="todoz">
-  <aside class="sidebar">
+  <aside class="sidebar" style="width:{sidebarWidth}px">
     <div class="brand">todoz</div>
     <nav class="group">
       <div class="group-label">Sections</div>
@@ -429,6 +441,7 @@
       {/each}
     </nav>
   </aside>
+  <Resizer get={() => sidebarWidth} set={(n) => (sidebarWidth = n)} dir={1} min={170} max={420} />
 
   <div class="main">
     <div class="viewbar">
@@ -516,7 +529,15 @@
         {/if}
       </div>
 
-      <Inspector title={inspected ? inspected.text : null} flags={inspected?.flags ?? 0} rows={inspectorRows} />
+      {#if showInspector}
+        <Resizer get={() => inspectorWidth} set={(n) => (inspectorWidth = n)} dir={-1} min={180} max={520} />
+        <Inspector
+          width={inspectorWidth}
+          title={inspected ? inspected.text : null}
+          flags={inspected?.flags ?? 0}
+          rows={inspectorRows}
+        />
+      {/if}
     </div>
   </div>
 
@@ -552,7 +573,6 @@
 
   /* Sections navigator — mirrors the notes scope sidebar. */
   .sidebar {
-    width: 200px;
     flex-shrink: 0;
     background: var(--glass);
     -webkit-backdrop-filter: var(--blur);
@@ -560,6 +580,7 @@
     border-right: 1px solid var(--border);
     padding: 0.5rem;
     overflow-y: auto;
+    overflow-x: hidden;
     display: flex;
     flex-direction: column;
     gap: 1rem;
