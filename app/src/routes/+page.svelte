@@ -1,14 +1,8 @@
 <script lang="ts">
   import NotesView from "$lib/components/NotesView.svelte";
   import TodozView from "$lib/components/TodozView.svelte";
-  import { Tabs } from "melt/builders";
 
   let mode = $state<"notes" | "todoz">("notes");
-
-  const tabs = new Tabs<"notes" | "todoz">({
-    value: () => mode,
-    onValueChange: (v) => (mode = v),
-  });
 
   function isTyping(target: EventTarget | null): boolean {
     const el = target as HTMLElement | null;
@@ -33,21 +27,11 @@
 
 <div class="shell">
   <div class="topbar">
-    <div class="tabs" {...tabs.triggerList}>
-      <button
-        class="tab"
-        class:active={mode === "notes"}
-        {...tabs.getTrigger("notes")}
-        title="Notes"
-      >
+    <div class="tabs">
+      <button class="tab" class:active={mode === "notes"} onclick={() => (mode = "notes")} title="Notes">
         <span class="glyph">✎</span><span class="label">Notes</span>
       </button>
-      <button
-        class="tab"
-        class:active={mode === "todoz"}
-        {...tabs.getTrigger("todoz")}
-        title="Todos"
-      >
+      <button class="tab" class:active={mode === "todoz"} onclick={() => (mode = "todoz")} title="Todos">
         <span class="glyph">☑</span><span class="label">Todos</span>
       </button>
     </div>
@@ -55,10 +39,10 @@
 
   <main class="content">
     <!-- Both views stay mounted so switching tabs preserves selection/scroll. -->
-    <div class="view" class:hidden={mode !== "notes"} {...tabs.getContent("notes")}>
+    <div class="view" class:hidden={mode !== "notes"}>
       <NotesView active={mode === "notes"} />
     </div>
-    <div class="view" class:hidden={mode !== "todoz"} {...tabs.getContent("todoz")}>
+    <div class="view" class:hidden={mode !== "todoz"}>
       <TodozView active={mode === "todoz"} />
     </div>
   </main>
