@@ -19,7 +19,7 @@ pub fn run() {
                 let window = app.get_webview_window("main").unwrap();
                 apply_vibrancy(
                     &window,
-                    NSVisualEffectMaterial::HudWindow,
+                    NSVisualEffectMaterial::Sidebar,
                     Some(NSVisualEffectState::Active),
                     None,
                 )

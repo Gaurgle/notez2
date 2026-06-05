@@ -66,7 +66,7 @@
   }
   .rail {
     width: 64px;
-    background: var(--glass);
+    background: rgba(20, 20, 32, var(--sidebar-glass-alpha));
     -webkit-backdrop-filter: var(--blur);
     backdrop-filter: var(--blur);
     border-right: 1px solid var(--border);

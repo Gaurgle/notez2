@@ -497,6 +497,8 @@
     flex-direction: column;
     flex: 1;
     min-width: 0;
+    /* Opaque content region — only the rail + sidebar are translucent glass. */
+    background: var(--base);
   }
   .panes {
     display: flex;
