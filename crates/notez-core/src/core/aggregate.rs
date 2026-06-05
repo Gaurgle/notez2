@@ -77,15 +77,20 @@ pub fn collect_in_scope(
             Some(p) => Some(config.notez_root_path().join("personal").join(&p.name)),
             None => Some(config.notez_root_path()),
         },
-        Scope::Global => Some(global_root_excluding_personal(config)),
+        Scope::Global => Some(config.notez_root_path()),
     };
 
     let Some(root) = root else {
         return Vec::new();
     };
 
+    let personal_root = config.notez_root_path().join("personal");
     let mut entries = Vec::new();
     for path in walk_markdown(&root) {
+        // For the global scope, the personal/ subtree belongs to projects.
+        if scope == Scope::Global && path.starts_with(&personal_root) {
+            continue;
+        }
         let Some(name) = path.file_name().and_then(|s| s.to_str()) else {
             continue;
         };
@@ -140,10 +145,22 @@ pub fn collect_all(
         }
     }
 
-    let global_root = global_root_excluding_personal(config);
+    let global_root = config.notez_root_path();
+    let personal_root = global_root.join("personal");
     for path in walk_markdown(&global_root) {
+        // The personal/ subtree is attributed to its owning project above;
+        // surfacing those files as global notes too would double-count them.
+        if path.starts_with(&personal_root) {
+            continue;
+        }
         push_entry(&mut out, path, Scope::Global, None);
     }
+
+    // Safety net: a single physical file can be reachable under more than one
+    // root (e.g. symlinked project dirs). Keep the first — i.e. most specific
+    // scope — occurrence of each path so the combined view never duplicates.
+    let mut seen = std::collections::HashSet::new();
+    out.retain(|e| seen.insert(e.path.clone()));
 
     Ok(out)
 }
@@ -158,18 +175,6 @@ fn push_entry(out: &mut Vec<NoteEntry>, path: PathBuf, scope: Scope, project: Op
         scope,
         project: project.map(|s| s.to_string()),
     });
-}
-
-/// Helper that returns the global notez root but skips anything under the
-/// `personal/` subtree, which is already attributed to specific projects
-/// in [`collect_all`].
-///
-/// Today this just returns the notez root and the caller relies on walk
-/// filters to skip `personal/`. The hidden-directory filter does not skip
-/// `personal/` because it is a normal-named directory, so we filter
-/// explicitly here.
-fn global_root_excluding_personal(config: &Config) -> PathBuf {
-    config.notez_root_path()
 }
 
 #[cfg(test)]
@@ -362,5 +367,43 @@ mod tests {
         let entries = collect_all(&config, &registry, &metadata).unwrap();
         let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
         assert!(names.contains(&"scratch.md"));
+    }
+
+    #[test]
+    fn collect_all_does_not_duplicate_personal_into_global() {
+        let notez_root = tempdir().unwrap();
+        let config = config_with_root(notez_root.path());
+
+        let project_dir = tempdir().unwrap();
+        // A personal note for project "p" lives under <root>/personal/p/.
+        touch(&notez_root.path().join("personal").join("p").join("secret.md"));
+        // A genuine global note elsewhere in the root.
+        touch(&notez_root.path().join("00_quick").join("global.md"));
+
+        let mut registry = ProjectRegistry::default();
+        registry.attach("p", project_dir.path());
+        let metadata = NotezMetadata::default();
+
+        let entries = collect_all(&config, &registry, &metadata).unwrap();
+
+        // No path may appear more than once.
+        let total = entries.len();
+        let mut paths: Vec<_> = entries.iter().map(|e| e.path.clone()).collect();
+        paths.sort();
+        paths.dedup();
+        assert_eq!(paths.len(), total, "collect_all returned duplicate paths");
+
+        // The personal note is attributed to Personal only — never Global.
+        let secret_scopes: Vec<Scope> = entries
+            .iter()
+            .filter(|e| e.name == "secret.md")
+            .map(|e| e.scope)
+            .collect();
+        assert_eq!(secret_scopes, vec![Scope::Personal]);
+
+        // The genuine global note is still present and global.
+        assert!(entries
+            .iter()
+            .any(|e| e.name == "global.md" && e.scope == Scope::Global));
     }
 }
