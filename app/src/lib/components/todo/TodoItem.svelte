@@ -151,11 +151,13 @@
   .row {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: 0.5rem;
     padding: 0 0.85rem 0 0.6rem;
     /* Fixed height (not min-height) so row spacing is fully deterministic —
-       it never shifts with content length, depth, or expand/collapse. */
-    height: 32px;
+       it never shifts with content length, depth, or expand/collapse.
+       Matches the notes list row (height + separator). */
+    height: 34px;
+    border-bottom: 1px solid var(--surface);
     font-size: 0.82rem;
     cursor: default;
   }
@@ -169,7 +171,7 @@
   /* Section headers — same type and height as a note row (just a touch
      bolder), so notes and todos read identically. */
   .row.header {
-    height: 32px;
+    height: 34px;
     padding: 0 0.85rem 0 0.6rem;
     color: var(--text);
     font-weight: 600;
@@ -257,7 +259,7 @@
 
   .caret,
   .caret-spacer {
-    width: 20px;
+    width: 22px;
     flex-shrink: 0;
     text-align: center;
   }
@@ -266,7 +268,7 @@
     border: none;
     color: var(--subtext);
     cursor: pointer;
-    font-size: 1.25rem;
+    font-size: 1.6rem;
     line-height: 1;
     padding: 0;
   }
