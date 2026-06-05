@@ -24,7 +24,8 @@
     "@tauri-apps/plugin-opener": "^2",
     "codemirror": "^6.0.2",
     "highlight.js": "^11.11.1",
-    "markdown-it": "^14.2.0"
+    "markdown-it": "^14.2.0",
+    "melt": "^0.44.0"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "^3.0.6",
