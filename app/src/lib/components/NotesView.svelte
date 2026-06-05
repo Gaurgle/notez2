@@ -10,6 +10,7 @@
   import Inspector from "$lib/components/Inspector.svelte";
   import MarkdownPreview from "$lib/components/MarkdownPreview.svelte";
   import Resizer from "$lib/components/Resizer.svelte";
+  import { Toaster, Toggle } from "melt/builders";
   import { SCOPE_META } from "$lib/types";
   import {
     listNotes,
@@ -58,10 +59,10 @@
   // Preview + inspector both open by default.
   let showPreview = $state(true);
   let showInspector = $state(true);
-  let sidebarWidth = $state(220);
+  let sidebarWidth = $state(190);
   let listWidth = $state(280);
   let previewWidth = $state(440);
-  let inspectorWidth = $state(250);
+  let inspectorWidth = $state(210);
 
   let vimMode = $state(
     typeof localStorage !== "undefined" && localStorage.getItem("notez.vim") === "1"
@@ -110,7 +111,13 @@
   let showMigrate = $state(false);
   let projects = $state<ProjectInfo[]>([]);
   let syncing = $state(false);
-  let toast = $state<string | null>(null);
+  const toaster = new Toaster<{ message: string }>({ closeDelay: 2500 });
+
+  // Toggle switches bound to the existing pane/mode state, so the p / i /
+  // Ctrl+; keyboard shortcuts and the switches stay in sync.
+  const previewToggle = new Toggle({ value: () => showPreview, onValueChange: (v) => (showPreview = v) });
+  const inspectorToggle = new Toggle({ value: () => showInspector, onValueChange: (v) => (showInspector = v) });
+  const vimToggle = new Toggle({ value: () => vimMode, onValueChange: (v) => (vimMode = v) });
 
   let sortMode = $state<"latest" | "oldest" | "name">("latest");
 
@@ -339,11 +346,8 @@
     }
   }
 
-  let toastTimer: ReturnType<typeof setTimeout> | undefined;
   function flash(msg: string) {
-    toast = msg;
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => (toast = null), 2500);
+    toaster.addToast({ data: { message: msg } });
   }
 </script>
 
@@ -381,14 +385,13 @@
         {sortMode === "latest" ? "Latest" : sortMode === "oldest" ? "Oldest" : "Name"}
       </button>
       <div class="spacer"></div>
-      {#if toast}<span class="toast">{toast}</span>{/if}
-      <button class="ghost" class:on={showPreview} onclick={() => (showPreview = !showPreview)} title="Preview (p)">
+      <button class="ghost" class:on={previewToggle.value} {...previewToggle.trigger} title="Preview (p)">
         Preview
       </button>
-      <button class="ghost" class:on={showInspector} onclick={() => (showInspector = !showInspector)} title="Inspector (i)">
+      <button class="ghost" class:on={inspectorToggle.value} {...inspectorToggle.trigger} title="Inspector (i)">
         Inspector
       </button>
-      <button class="primary" onclick={() => (showNewNote = true)}>+ New</button>
+      <button class="ghost" onclick={() => (showNewNote = true)}>+ New</button>
       <button class="ghost" onclick={() => (showLog = true)}>Log</button>
       <button class="ghost" onclick={doSync} disabled={syncing}>
         {syncing ? "Syncing…" : "Sync"}
@@ -455,16 +458,20 @@
       {#if selectedPath}
         <span class="sb-count">{content.length} chars · {wordCount} words</span>
       {/if}
-      <button
-        class="vim-pill"
-        class:on={vimMode}
-        onclick={() => (vimMode = !vimMode)}
-        title="Toggle vim mode (Ctrl+;)"
-      >
+      <button class="vim-pill" class:on={vimToggle.value} {...vimToggle.trigger} title="Toggle vim mode (Ctrl+;)">
         VIM
       </button>
     </div>
   </div>
+</div>
+
+<div class="toaster" {...toaster.root}>
+  {#each toaster.toasts as t (t.id)}
+    <div class="toast-card" {...t.content}>
+      <span {...t.title}>{t.data.message}</span>
+      <button class="toast-x" {...t.close} aria-label="dismiss">×</button>
+    </div>
+  {/each}
 </div>
 
 {#if showNewNote}
@@ -492,11 +499,49 @@
     height: 100%;
     overflow: hidden;
   }
+  .toaster {
+    position: fixed;
+    bottom: 1rem;
+    right: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    z-index: 50;
+  }
+  .toast-card {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    background: var(--glass-strong);
+    -webkit-backdrop-filter: var(--blur);
+    backdrop-filter: var(--blur);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow);
+    padding: 0.55rem 0.8rem;
+    font-size: 0.8rem;
+    color: var(--text);
+    animation: pop 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  }
+  .toast-x {
+    background: none;
+    border: none;
+    color: var(--faint);
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    padding: 0;
+  }
+  .toast-x:hover {
+    color: var(--text);
+  }
   .main {
     display: flex;
     flex-direction: column;
     flex: 1;
     min-width: 0;
+    /* Opaque content region — only the rail + sidebar are translucent glass. */
+    background: var(--base);
   }
   .panes {
     display: flex;
@@ -557,7 +602,7 @@
     font-size: 0.62rem;
     font-weight: 700;
     letter-spacing: 0.05em;
-    padding: 0.1rem 0.5rem;
+    padding: 0.12rem 0.55rem;
     border-radius: 0.6rem;
     border: 1px solid var(--border);
     background: var(--glass-hover);
@@ -566,8 +611,8 @@
   }
   .vim-pill.on {
     color: var(--accent-public);
-    background: color-mix(in srgb, var(--accent-public) 18%, transparent);
-    border-color: color-mix(in srgb, var(--accent-public) 40%, transparent);
+    background: color-mix(in srgb, var(--accent-public) 14%, transparent);
+    border-color: color-mix(in srgb, var(--accent-public) 32%, transparent);
   }
   .sortbtn {
     padding: 0.42rem 0.7rem;

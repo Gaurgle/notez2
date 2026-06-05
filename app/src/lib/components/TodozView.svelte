@@ -1,7 +1,11 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { Toggle } from "melt/builders";
   import TodoItem from "$lib/components/todo/TodoItem.svelte";
+  import TodoPreview from "$lib/components/todo/TodoPreview.svelte";
+  import Calendar from "$lib/components/Calendar.svelte";
   import Inspector from "$lib/components/Inspector.svelte";
+  import MachineAvatar from "$lib/components/MachineAvatar.svelte";
   import Resizer from "$lib/components/Resizer.svelte";
   import {
     loadTodoBoard,
@@ -23,8 +27,20 @@
   let { active = true }: { active?: boolean } = $props();
 
   let showInspector = $state(typeof window === "undefined" || window.innerWidth >= 1100);
-  let inspectorWidth = $state(250);
-  let sidebarWidth = $state(220);
+  let inspectorWidth = $state(210);
+  let sidebarWidth = $state(190);
+
+  const inspectorToggle = new Toggle({
+    value: () => showInspector,
+    onValueChange: (v) => (showInspector = v),
+  });
+
+  let showPreview = $state(true);
+  let previewWidth = $state(400);
+  const previewToggle = new Toggle({
+    value: () => showPreview,
+    onValueChange: (v) => (showPreview = v),
+  });
 
   /** Resolve a `#token` (without `#`) into a tag bitset, like the CLI:
    *  empty → all, digits → those 1-based tags (OR), else name-prefix match. */
@@ -214,6 +230,25 @@
         ]
       : []
   );
+  // Preview pane: the selected todo (never a section header) plus its whole
+  // descendant subtree, read from the full flat list.
+  let previewTask = $derived(
+    selectedTask && !selectedTask.is_header ? selectedTask : null
+  );
+  let previewSubtasks = $derived.by(() => {
+    const t = previewTask;
+    if (!t) return [] as TodoTask[];
+    const idx = items.findIndex((i) => i.id === t.id);
+    if (idx < 0) return [] as TodoTask[];
+    const out: TodoTask[] = [];
+    for (let j = idx + 1; j < items.length; j++) {
+      const it = items[j];
+      if (it.is_header || it.depth <= t.depth) break;
+      out.push(it);
+    }
+    return out;
+  });
+
   let pending = $derived(
     items.filter((i) => !i.is_header && i.depth === 0 && i.state !== "checked").length
   );
@@ -415,7 +450,10 @@
 
 <div class="todoz">
   <aside class="sidebar" style="width:{sidebarWidth}px">
-    <div class="brand">todoz</div>
+    <div class="brand">
+      <MachineAvatar />
+      <span class="brand-name">todoz</span>
+    </div>
     <nav class="group">
       <div class="group-label">Sections</div>
       <button
@@ -466,7 +504,13 @@
       </span>
       <span class="counts">{pending} pending · {done} done</span>
       <div class="spacer"></div>
-      <button class="primary" onclick={toolbarNew}>+ New</button>
+      <button class="ghost" class:on={previewToggle.value} {...previewToggle.trigger} title="Preview">
+        Preview
+      </button>
+      <button class="ghost" class:on={inspectorToggle.value} {...inspectorToggle.trigger} title="Inspector (i)">
+        Inspector
+      </button>
+      <button class="ghost" onclick={toolbarNew}>+ New</button>
       <button class="ghost icon" title="keybindings" onclick={() => (showHelp = true)}>?</button>
     </div>
 
@@ -529,6 +573,14 @@
         {/if}
       </div>
 
+      {#if showPreview}
+        <Resizer get={() => previewWidth} set={(n) => (previewWidth = n)} dir={-1} min={280} max={760} />
+        <div class="preview-col" style="width:{previewWidth}px">
+          <TodoPreview task={previewTask} subtasks={previewSubtasks} />
+          <Calendar />
+        </div>
+      {/if}
+
       {#if showInspector}
         <Resizer get={() => inspectorWidth} set={(n) => (inspectorWidth = n)} dir={-1} min={180} max={520} />
         <Inspector
@@ -574,7 +626,7 @@
   /* Sections navigator — mirrors the notes scope sidebar. */
   .sidebar {
     flex-shrink: 0;
-    background: var(--glass);
+    background: rgba(20, 20, 32, var(--sidebar-glass-alpha));
     -webkit-backdrop-filter: var(--blur);
     backdrop-filter: var(--blur);
     border-right: 1px solid var(--border);
@@ -586,10 +638,16 @@
     gap: 1rem;
   }
   .brand {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
     font-weight: 700;
     font-size: 1rem;
     color: var(--accent);
     padding: 0.4rem 0.5rem;
+  }
+  .brand-name {
+    color: var(--accent);
   }
   .group-label {
     font-size: 0.65rem;
@@ -635,6 +693,8 @@
     flex-direction: column;
     flex: 1;
     min-width: 0;
+    /* Opaque content region — only the rail + sidebar are translucent glass. */
+    background: var(--base);
   }
   .tagdots {
     display: flex;
@@ -698,6 +758,14 @@
     min-height: 0;
     background: rgba(18, 18, 28, 0.92);
     padding-bottom: 1rem;
+  }
+  /* Right pane: detail card on top, calendar pinned below. */
+  .preview-col {
+    flex-shrink: 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    border-left: 1px solid var(--border);
   }
   .status {
     padding: 1rem;

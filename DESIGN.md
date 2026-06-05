@@ -167,6 +167,35 @@ It does not touch the actual note files; it only re-writes the index layer. Old 
 
 ## Open questions and future work
 
+### Calendar / deadlines for notes and todos (future)
+
+Idea: surface a calendar dimension across notez and todoz. Each note/todo
+could carry a **created date** (already implicit in filenames/mtime) and,
+more importantly, an optional **deadline and/or event date**. A calendar
+view would then link documents to dates — see what's due, what was created
+when, and what events are coming up — across scopes and projects.
+
+**Surface / home for it:** the todoz **preview pane** (the selected-todo
+detail card added in the Melt UI refresh) is the natural place to set and
+show a todo's date. The right pane could hold a date field + a mini-calendar
+to assign a deadline/event to the selected todo, and a fuller calendar view
+could aggregate dated todos/notes across sections.
+
+Open questions when this is picked up:
+- Where does the date live? Frontmatter in the `.md` / inline metadata on a
+  todo line (e.g. a `@2026-07-01` token) vs. a sidecar index. **This is the
+  crux** — TODO.md round-trips byte-for-byte through `notez`/`todoz`/nvim, so
+  the encoding must survive the CLI untouched (likely an inline `@date` token
+  parsed by notez-core, mirroring how `#tags` already work).
+- Deadline vs. event vs. created-date as distinct fields.
+- Which UI library — Melt UI's `melt` package has **no** Calendar builder
+  yet (only the legacy `@melt-ui/svelte` does), so this is a hand-roll or a
+  legacy-pkg dependency when the time comes.
+- Interaction with todoz tags (`#blocked`, `#longterm`) and sorting.
+
+Deferred — not in the Melt UI refresh (Phase 1). Captured here so it isn't
+lost.
+
 ### Scope migration (move notes/todos between scopes)
 
 Sometimes a note that started as personal should become public, or a local

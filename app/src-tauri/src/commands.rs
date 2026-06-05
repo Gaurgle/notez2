@@ -211,6 +211,21 @@ pub fn sync() -> Result<String, String> {
     Ok(log.trim().to_string())
 }
 
+/// The current machine's hostname, used as a per-machine identity label in
+/// the sidebar avatar. Shells out to `hostname` (reliable in a GUI launch
+/// where `$HOSTNAME` is often unset) and falls back to a generic label.
+#[tauri::command]
+pub fn machine_name() -> String {
+    std::process::Command::new("hostname")
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "this machine".to_string())
+}
+
 // --- legacy migration ---
 
 /// Preview the legacy → notez2 migration (changes nothing).

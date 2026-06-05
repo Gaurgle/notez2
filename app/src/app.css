@@ -28,6 +28,9 @@
   --radius: 14px;
   --radius-sm: 9px;
 
+  /* Left pane translucency over native vibrancy. 1 = opaque, lower = glassier. */
+  --sidebar-glass-alpha: 0.92;
+
   /* Compatibility tokens used across components, mapped onto the glass system. */
   --base: #0c0c14;
   --mantle: rgba(24, 24, 36, 0.92);
@@ -53,17 +56,18 @@ body {
   overflow: hidden;
 }
 
-/* Clean solid dark base with a faint, static color wash. */
+/* Transparent base so the native macOS vibrancy (Sidebar material) shows
+   through behind translucent panes. */
 html,
 body {
-  background: #14141e;
+  background: transparent;
 }
 
 body {
   position: relative;
   background-image:
-    radial-gradient(48% 58% at 12% 14%, rgba(203, 166, 247, 0.08), transparent 70%),
-    radial-gradient(48% 58% at 88% 12%, rgba(137, 180, 250, 0.06), transparent 70%);
+    radial-gradient(48% 58% at 12% 14%, rgba(203, 166, 247, 0.06), transparent 70%),
+    radial-gradient(48% 58% at 88% 12%, rgba(137, 180, 250, 0.05), transparent 70%);
   background-attachment: fixed;
 }
 
@@ -103,10 +107,6 @@ body {
   font-size: 0.74rem;
   color: var(--subtext);
   white-space: nowrap;
-}
-.viewbar .toast {
-  font-size: 0.72rem;
-  color: var(--subtext);
 }
 button.icon {
   width: 30px;
@@ -252,8 +252,9 @@ button.ghost {
 button.ghost:hover {
   background: var(--glass-active);
 }
+/* Toggled "on" state — kept subtle: a soft accent tint, not a full fill. */
 button.ghost.on {
-  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
   color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 26%, transparent);
 }

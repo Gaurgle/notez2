@@ -59,5 +59,8 @@ export const attachProject = (name: string, path: string) =>
 export const detachProject = (name: string) => invoke<void>("detach_project", { name });
 export const syncNotez = () => invoke<string>("sync");
 
+/** This machine's hostname, for the per-machine sidebar avatar. */
+export const machineName = () => invoke<string>("machine_name");
+
 export const migratePreview = () => invoke<PlanItem[]>("migrate_preview");
 export const migrateApply = () => invoke<string[]>("migrate_apply");

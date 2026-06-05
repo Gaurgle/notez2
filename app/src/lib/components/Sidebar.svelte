@@ -1,4 +1,5 @@
 <script lang="ts">
+  import MachineAvatar from "$lib/components/MachineAvatar.svelte";
   import type { NoteListItem, ProjectInfo, Scope } from "$lib/types";
   import { SCOPE_META } from "$lib/types";
 
@@ -34,7 +35,10 @@
 </script>
 
 <aside class="sidebar" style="width:{width}px">
-  <div class="brand">notez</div>
+  <div class="brand">
+    <MachineAvatar />
+    <span class="brand-name">notez</span>
+  </div>
 
   <nav class="group">
     <div class="group-label">Scopes</div>
@@ -114,7 +118,7 @@
 <style>
   .sidebar {
     flex-shrink: 0;
-    background: var(--glass);
+    background: rgba(20, 20, 32, var(--sidebar-glass-alpha));
     -webkit-backdrop-filter: var(--blur);
     backdrop-filter: var(--blur);
     border-right: 1px solid var(--border);
@@ -126,10 +130,16 @@
     gap: 1rem;
   }
   .brand {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
     font-weight: 700;
     font-size: 1rem;
     color: var(--accent);
     padding: 0.4rem 0.5rem;
+  }
+  .brand-name {
+    color: var(--accent);
   }
   .group-label {
     font-size: 0.65rem;

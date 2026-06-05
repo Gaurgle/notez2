@@ -118,7 +118,13 @@
       <span class="caret-spacer"></span>
     {/if}
 
-    <button class="check {task.state}" aria-label="toggle done" onclick={() => onToggle(task.id)}>
+    <button
+      class="check {task.state}"
+      role="checkbox"
+      aria-checked={task.state === "checked" ? "true" : task.state === "half" ? "mixed" : "false"}
+      aria-label="toggle done"
+      onclick={() => onToggle(task.id)}
+    >
       {mark}
     </button>
 
@@ -145,10 +151,14 @@
   .row {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: 0.5rem;
     padding: 0 0.85rem 0 0.6rem;
-    min-height: 26px;
-    font-size: 0.85rem;
+    /* Fixed height (not min-height) so row spacing is fully deterministic —
+       it never shifts with content length, depth, or expand/collapse.
+       Matches the notes list row (height + separator). */
+    height: 34px;
+    border-bottom: 1px solid var(--surface);
+    font-size: 0.82rem;
     cursor: default;
   }
   .row:not(.header):hover {
@@ -158,15 +168,14 @@
     background: color-mix(in srgb, var(--accent) 16%, transparent);
   }
 
-  /* Section headers */
+  /* Section headers — same type and height as a note row (just a touch
+     bolder), so notes and todos read identically. */
   .row.header {
-    min-height: 24px;
-    padding: 0.1rem 0.85rem 0.1rem 0.6rem;
-    color: var(--subtext);
-    font-weight: 700;
-    font-size: 0.68rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
+    height: 34px;
+    padding: 0 0.85rem 0 0.6rem;
+    color: var(--text);
+    font-weight: 600;
+    font-size: 0.82rem;
   }
   .row.header.selected {
     background: color-mix(in srgb, var(--accent) 14%, transparent);
@@ -250,7 +259,7 @@
 
   .caret,
   .caret-spacer {
-    width: 20px;
+    width: 22px;
     flex-shrink: 0;
     text-align: center;
   }
@@ -259,7 +268,7 @@
     border: none;
     color: var(--subtext);
     cursor: pointer;
-    font-size: 1.25rem;
+    font-size: 1.6rem;
     line-height: 1;
     padding: 0;
   }
