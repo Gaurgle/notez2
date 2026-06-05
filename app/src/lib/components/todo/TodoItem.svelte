@@ -118,7 +118,13 @@
       <span class="caret-spacer"></span>
     {/if}
 
-    <button class="check {task.state}" aria-label="toggle done" onclick={() => onToggle(task.id)}>
+    <button
+      class="check {task.state}"
+      role="checkbox"
+      aria-checked={task.state === "checked" ? "true" : task.state === "half" ? "mixed" : "false"}
+      aria-label="toggle done"
+      onclick={() => onToggle(task.id)}
+    >
       {mark}
     </button>
 
