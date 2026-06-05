@@ -1,17 +1,7 @@
 <script lang="ts">
-  import { onMount } from "svelte";
-  import { Avatar } from "melt/builders";
+  import MachineAvatar from "$lib/components/MachineAvatar.svelte";
   import type { NoteListItem, ProjectInfo, Scope } from "$lib/types";
   import { SCOPE_META } from "$lib/types";
-  import { machineName } from "$lib/ipc";
-
-  // Per-machine identity for the header avatar (initials of the hostname).
-  let host = $state("");
-  const avatar = new Avatar({ src: () => "" }); // no image — initials fallback
-  const initials = $derived(host.replace(/\.local$/, "").slice(0, 2).toUpperCase() || "··");
-  onMount(async () => {
-    host = await machineName();
-  });
 
   let {
     notes,
@@ -46,7 +36,7 @@
 
 <aside class="sidebar" style="width:{width}px">
   <div class="brand">
-    <span class="avatar" {...avatar.fallback} title={host || "this machine"}>{initials}</span>
+    <MachineAvatar />
     <span class="brand-name">notez</span>
   </div>
 
@@ -147,18 +137,6 @@
     font-size: 1rem;
     color: var(--accent);
     padding: 0.4rem 0.5rem;
-  }
-  .avatar {
-    width: 26px;
-    height: 26px;
-    border-radius: 50%;
-    display: grid;
-    place-items: center;
-    font-size: 0.66rem;
-    font-weight: 700;
-    color: #1a1626;
-    background: linear-gradient(180deg, var(--accent), #b48ceb);
-    flex-shrink: 0;
   }
   .brand-name {
     color: var(--accent);

@@ -1,7 +1,9 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { Toggle } from "melt/builders";
   import TodoItem from "$lib/components/todo/TodoItem.svelte";
   import Inspector from "$lib/components/Inspector.svelte";
+  import MachineAvatar from "$lib/components/MachineAvatar.svelte";
   import Resizer from "$lib/components/Resizer.svelte";
   import {
     loadTodoBoard,
@@ -25,6 +27,11 @@
   let showInspector = $state(typeof window === "undefined" || window.innerWidth >= 1100);
   let inspectorWidth = $state(210);
   let sidebarWidth = $state(190);
+
+  const inspectorToggle = new Toggle({
+    value: () => showInspector,
+    onValueChange: (v) => (showInspector = v),
+  });
 
   /** Resolve a `#token` (without `#`) into a tag bitset, like the CLI:
    *  empty → all, digits → those 1-based tags (OR), else name-prefix match. */
@@ -415,7 +422,10 @@
 
 <div class="todoz">
   <aside class="sidebar" style="width:{sidebarWidth}px">
-    <div class="brand">todoz</div>
+    <div class="brand">
+      <MachineAvatar />
+      <span class="brand-name">todoz</span>
+    </div>
     <nav class="group">
       <div class="group-label">Sections</div>
       <button
@@ -466,7 +476,10 @@
       </span>
       <span class="counts">{pending} pending · {done} done</span>
       <div class="spacer"></div>
-      <button class="primary" onclick={toolbarNew}>+ New</button>
+      <button class="ghost" class:on={inspectorToggle.value} {...inspectorToggle.trigger} title="Inspector (i)">
+        Inspector
+      </button>
+      <button class="ghost" onclick={toolbarNew}>+ New</button>
       <button class="ghost icon" title="keybindings" onclick={() => (showHelp = true)}>?</button>
     </div>
 
@@ -574,7 +587,7 @@
   /* Sections navigator — mirrors the notes scope sidebar. */
   .sidebar {
     flex-shrink: 0;
-    background: var(--glass);
+    background: rgba(20, 20, 32, var(--sidebar-glass-alpha));
     -webkit-backdrop-filter: var(--blur);
     backdrop-filter: var(--blur);
     border-right: 1px solid var(--border);
@@ -586,10 +599,16 @@
     gap: 1rem;
   }
   .brand {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
     font-weight: 700;
     font-size: 1rem;
     color: var(--accent);
     padding: 0.4rem 0.5rem;
+  }
+  .brand-name {
+    color: var(--accent);
   }
   .group-label {
     font-size: 0.65rem;
