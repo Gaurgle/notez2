@@ -10,6 +10,7 @@
   import Inspector from "$lib/components/Inspector.svelte";
   import MarkdownPreview from "$lib/components/MarkdownPreview.svelte";
   import Resizer from "$lib/components/Resizer.svelte";
+  import { Toaster } from "melt/builders";
   import { SCOPE_META } from "$lib/types";
   import {
     listNotes,
@@ -110,7 +111,7 @@
   let showMigrate = $state(false);
   let projects = $state<ProjectInfo[]>([]);
   let syncing = $state(false);
-  let toast = $state<string | null>(null);
+  const toaster = new Toaster<{ message: string }>({ closeDelay: 2500 });
 
   let sortMode = $state<"latest" | "oldest" | "name">("latest");
 
@@ -339,11 +340,8 @@
     }
   }
 
-  let toastTimer: ReturnType<typeof setTimeout> | undefined;
   function flash(msg: string) {
-    toast = msg;
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => (toast = null), 2500);
+    toaster.addToast({ data: { message: msg } });
   }
 </script>
 
@@ -381,7 +379,6 @@
         {sortMode === "latest" ? "Latest" : sortMode === "oldest" ? "Oldest" : "Name"}
       </button>
       <div class="spacer"></div>
-      {#if toast}<span class="toast">{toast}</span>{/if}
       <button class="ghost" class:on={showPreview} onclick={() => (showPreview = !showPreview)} title="Preview (p)">
         Preview
       </button>
@@ -467,6 +464,15 @@
   </div>
 </div>
 
+<div class="toaster" {...toaster.root}>
+  {#each toaster.toasts as t (t.id)}
+    <div class="toast-card" {...t.content}>
+      <span {...t.title}>{t.data.message}</span>
+      <button class="toast-x" {...t.close} aria-label="dismiss">×</button>
+    </div>
+  {/each}
+</div>
+
 {#if showNewNote}
   <NewNoteDialog {onCreate} onClose={() => (showNewNote = false)} />
 {/if}
@@ -491,6 +497,42 @@
     display: flex;
     height: 100%;
     overflow: hidden;
+  }
+  .toaster {
+    position: fixed;
+    bottom: 1rem;
+    right: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    z-index: 50;
+  }
+  .toast-card {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    background: var(--glass-strong);
+    -webkit-backdrop-filter: var(--blur);
+    backdrop-filter: var(--blur);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow);
+    padding: 0.55rem 0.8rem;
+    font-size: 0.8rem;
+    color: var(--text);
+    animation: pop 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  }
+  .toast-x {
+    background: none;
+    border: none;
+    color: var(--faint);
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    padding: 0;
+  }
+  .toast-x:hover {
+    color: var(--text);
   }
   .main {
     display: flex;

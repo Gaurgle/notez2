@@ -108,10 +108,6 @@ body {
   color: var(--subtext);
   white-space: nowrap;
 }
-.viewbar .toast {
-  font-size: 0.72rem;
-  color: var(--subtext);
-}
 button.icon {
   width: 30px;
   padding: 0.42rem 0;
