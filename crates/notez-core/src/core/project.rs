@@ -17,10 +17,12 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+use serde::{Deserialize, Serialize};
+
 use crate::util::sanitize;
 
 /// A named project rooted at a directory on this machine.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Project {
     /// Sanitized slug name (filesystem-safe).
     pub name: String,

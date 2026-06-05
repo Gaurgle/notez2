@@ -4,8 +4,8 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
 
-use crate::config::Config;
-use crate::core::{Scope, note, resolve};
+use notez_core::config::Config;
+use notez_core::core::{Scope, note, resolve};
 
 /// Append a log entry. Returns the file path written to.
 pub fn run(message_words: Vec<String>, scope: Scope, config: &Config) -> Result<PathBuf> {

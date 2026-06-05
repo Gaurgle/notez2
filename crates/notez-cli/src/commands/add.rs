@@ -5,8 +5,8 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 
 use crate::cli;
-use crate::config::Config;
-use crate::core::{Note, Scope, resolve};
+use notez_core::config::Config;
+use notez_core::core::{Note, Scope, resolve};
 
 /// Write the new note to disk and return its absolute path.
 pub fn run(

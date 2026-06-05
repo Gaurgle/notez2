@@ -8,8 +8,8 @@
 
 use anyhow::{Result, bail};
 
-use crate::config::Config;
-use crate::core::Scope;
+use notez_core::config::Config;
+use notez_core::core::Scope;
 
 pub fn run(_item: Option<String>, _scope: Scope, _config: &Config) -> Result<()> {
     bail!("todo TUI not yet implemented in notez2; coming in the next milestone");

@@ -4,7 +4,7 @@
 
 use anyhow::{Result, bail};
 
-use crate::config::ProjectRegistry;
+use notez_core::config::ProjectRegistry;
 
 pub fn run(name: String) -> Result<()> {
     let mut reg = ProjectRegistry::load()?;

@@ -1,0 +1,21 @@
+[package]
+name = "notez-core"
+version = "0.1.0"
+edition = "2021"
+description = "GUI-agnostic core for notez2: scopes, notes, todos, config, aggregation."
+license = "MIT"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+
+dirs = "6"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+anyhow = "1"
+
+which = "7"
+walkdir = "2"
+
+[dev-dependencies]
+tempfile = "3"
+serial_test = "3"

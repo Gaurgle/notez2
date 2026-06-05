@@ -6,8 +6,8 @@
 
 use anyhow::{Result, bail};
 
-use crate::config::Config;
-use crate::core::Scope;
+use notez_core::config::Config;
+use notez_core::core::Scope;
 
 pub fn run(_scope: Scope, _config: &Config) -> Result<()> {
     bail!("tree TUI not yet implemented in notez2; coming in the next milestone");

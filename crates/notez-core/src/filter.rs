@@ -15,7 +15,7 @@
 //! `#idea`; `#imp` matches only `#important`. A bare `#` matches anything
 //! that has any tag set.
 
-use super::tags::{FLAG_DEFS, parse_flags};
+use crate::tags::{FLAG_DEFS, parse_flags};
 
 /// Parsed filter: text substrings to match (AND) plus tag sets to match
 /// (each set OR'd internally, sets AND'd across).
@@ -153,7 +153,7 @@ pub fn cleaned_text_for_matching(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tui::tags::{FLAG_BLOCKED, FLAG_IDEA, FLAG_IMPORTANT, FLAG_LONGTERM, FLAG_PRIO};
+    use crate::tags::{FLAG_BLOCKED, FLAG_IDEA, FLAG_IMPORTANT, FLAG_LONGTERM, FLAG_PRIO};
 
     #[test]
     fn empty_buffer_is_empty_filter() {

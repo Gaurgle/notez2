@@ -8,8 +8,8 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 
-use crate::config::ProjectRegistry;
-use crate::core::Project;
+use notez_core::config::ProjectRegistry;
+use notez_core::core::Project;
 
 /// Result of an attach operation.
 pub struct AttachResult {
@@ -35,12 +35,12 @@ pub fn run_with_registry(
     save: impl FnOnce(&ProjectRegistry) -> Result<()>,
 ) -> Result<AttachResult> {
     let local_path = match path {
-        Some(p) => crate::util::tilde::expand(&p),
+        Some(p) => notez_core::util::tilde::expand(&p),
         None => std::env::current_dir()?,
     };
 
     let name = match name {
-        Some(n) => crate::util::sanitize::name(&n),
+        Some(n) => notez_core::util::sanitize::name(&n),
         None => Project::detect_from(&local_path).name,
     };
 

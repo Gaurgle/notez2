@@ -695,7 +695,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "notez2"
+name = "notez-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -706,8 +706,20 @@ dependencies = [
  "crossterm",
  "dialoguer",
  "dirs",
+ "notez-core",
  "ratatui",
  "rustyline",
+ "serial_test",
+ "tempfile",
+]
+
+[[package]]
+name = "notez-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "dirs",
  "serde",
  "serial_test",
  "tempfile",

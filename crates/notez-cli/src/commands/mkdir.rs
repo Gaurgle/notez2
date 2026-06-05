@@ -4,9 +4,9 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
 
-use crate::config::Config;
-use crate::core::{Scope, resolve};
-use crate::util::sanitize;
+use notez_core::config::Config;
+use notez_core::core::{Scope, resolve};
+use notez_core::util::sanitize;
 
 /// Create the directory. Returns its absolute path.
 pub fn run(name_words: Vec<String>, scope: Scope, config: &Config) -> Result<PathBuf> {

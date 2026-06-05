@@ -1,39 +1,8 @@
-[package]
-name = "notez2"
-version = "0.1.0"
-edition = "2021"
-description = "Local-first CLI note-taking tool, cross-machine portable"
-license = "MIT"
+[workspace]
+resolver = "2"
+members = ["crates/notez-core", "crates/notez-cli"]
 
-[[bin]]
-name = "notez"
-path = "src/main.rs"
-
-[dependencies]
-clap = { version = "4", features = ["derive"] }
-clap_complete = "4"
-
-serde = { version = "1", features = ["derive"] }
-toml = "0.8"
-
-dirs = "6"
-chrono = { version = "0.4", default-features = false, features = ["clock"] }
-anyhow = "1"
-
-dialoguer = "0.11"
-rustyline = "15"
-console = "0.15"
-
-ratatui = "0.29"
-crossterm = "0.28"
-
-which = "7"
-walkdir = "2"
-
-[dev-dependencies]
-tempfile = "3"
-serial_test = "3"
-
+# Shared release profile for every workspace member (incl. the future Tauri app).
 [profile.release]
 lto = true
 codegen-units = 1

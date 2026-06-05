@@ -8,7 +8,7 @@ use std::process::Command;
 
 use anyhow::{Context, Result, bail};
 
-use crate::config::Config;
+use notez_core::config::Config;
 
 pub fn run(config: &Config) -> Result<()> {
     let root = config.notez_root_path();

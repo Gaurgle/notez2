@@ -1,8 +1,10 @@
 //! Note creation: filenames, headers, body templates.
 
 use chrono::Local;
+use serde::{Deserialize, Serialize};
 
 /// A new note to be written.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Note {
     pub title: String,
     pub body: Option<String>,

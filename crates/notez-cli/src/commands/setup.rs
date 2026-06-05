@@ -5,10 +5,10 @@
 
 use anyhow::Result;
 
-use crate::config::Config;
+use notez_core::config::Config;
 
 pub fn run() -> Result<()> {
-    let path = crate::config::paths::config_file();
+    let path = notez_core::config::paths::config_file();
     if path.exists() {
         println!("Config already exists at {}.", path.display());
         println!("Interactive wizard coming in the next milestone.");

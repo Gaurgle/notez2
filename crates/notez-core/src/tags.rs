@@ -1,16 +1,12 @@
 //! Tag system shared by tree and todoz.
 //!
 //! Five tag flags packed into a `u8`. Each tag has a hashtag spelling that
-//! survives a round-trip through TODO.md and `.tags` files. The colors are
-//! defined alongside in [`super::theme`] to keep palette and tag-meaning
-//! in sync.
+//! survives a round-trip through TODO.md and `.tags` files. The ratatui
+//! colors and dot rendering live in the CLI's `tui::tags` module so this
+//! core module stays terminal-agnostic.
 //!
-//! Filter syntax is implemented separately in [`super::filter`]; this
+//! Filter syntax is implemented separately in [`crate::filter`]; this
 //! module only owns the bit definitions, parse, and serialize.
-
-use ratatui::style::Color;
-
-use super::theme;
 
 /// Definition of one tag flag.
 pub struct FlagDef {
@@ -55,10 +51,6 @@ pub const FLAG_DEFS: [FlagDef; 5] = [
     },
 ];
 
-/// The 5 colors aligned 1:1 with [`FLAG_DEFS`]. Re-exported from
-/// [`super::theme::FLAG_COLORS`] so callers do not need to import both.
-pub const FLAG_COLORS: [Color; 5] = theme::FLAG_COLORS;
-
 /// Parse `#tag` markers out of `text` and return `(stripped_text, flags)`.
 ///
 /// Strips any trailing `#prio`, `#important`, `#longterm`, `#idea`,
@@ -92,24 +84,6 @@ pub fn serialize_flags(text: &str, flags: u8) -> String {
             out.push(' ');
             out.push('#');
             out.push_str(def.key);
-        }
-    }
-    out
-}
-
-/// Render the 5 dot slots as a `(Color, &str)` per slot, with set bits
-/// showing the tag color and unset bits showing a dim middle-dot.
-///
-/// Used by both tree and todoz to render the per-row tag column. The
-/// caller is responsible for laying out the cells with the correct
-/// spacing (one space between dots).
-pub fn flags_slots(flags: u8) -> [(Color, &'static str); 5] {
-    let mut out = [(Color::Reset, "·"); 5];
-    for (i, def) in FLAG_DEFS.iter().enumerate() {
-        if flags & def.bit != 0 {
-            out[i] = (FLAG_COLORS[i], "\u{f111}"); // nerdfont filled dot
-        } else {
-            out[i] = (theme::OVERLAY, "·");
         }
     }
     out
@@ -194,16 +168,5 @@ mod tests {
         assert_eq!(f, FLAG_PRIO);
         let f = toggle(f, FLAG_PRIO);
         assert_eq!(f, 0);
-    }
-
-    #[test]
-    fn slots_distinguish_set_and_unset() {
-        let slots = flags_slots(FLAG_IMPORTANT | FLAG_BLOCKED);
-        // Important is set (slot 0), blocked is set (slot 4), rest unset.
-        assert_ne!(slots[0].1, "·");
-        assert_eq!(slots[1].1, "·");
-        assert_eq!(slots[2].1, "·");
-        assert_eq!(slots[3].1, "·");
-        assert_ne!(slots[4].1, "·");
     }
 }

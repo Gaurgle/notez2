@@ -10,12 +10,18 @@
 
 use std::fmt;
 
+use serde::{Deserialize, Serialize};
+
 /// The four note scopes.
 ///
 /// Derived from CLI flags: default = `Personal`, `-l` = `Local`,
 /// `-p` = `Public`, `-g` = `Global`. Flags are mutually exclusive; if more
 /// than one is given, the precedence is global > public > local > personal.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+///
+/// Serializes lowercase (`"local"`, `"personal"`, …) so the frontend and the
+/// `Display` impl agree on the wire form.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Scope {
     Local,
     Personal,

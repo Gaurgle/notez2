@@ -11,18 +11,15 @@
 
 mod cli;
 mod commands;
-mod config;
-mod core;
 mod tui;
-mod util;
 
 use std::process::ExitCode;
 
 use clap::Parser;
 
 use crate::cli::{Cli, Commands};
-use crate::config::Config;
-use crate::core::Scope;
+use notez_core::config::Config;
+use notez_core::core::Scope;
 
 fn main() -> ExitCode {
     install_panic_hook();
@@ -107,7 +104,7 @@ fn main() -> ExitCode {
             println!(
                 "Attached {} at {}{}",
                 r.name,
-                util::tilde::contract(&r.local_path),
+                notez_core::util::tilde::contract(&r.local_path),
                 suffix,
             );
         }),

@@ -8,6 +8,7 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
 use crate::config::{Config, NotezMetadata, ProjectRegistry};
@@ -17,7 +18,7 @@ use crate::core::{Project, Scope};
 ///
 /// Entries carry their scope so the TUI can render the lock/user/globe/home
 /// icon next to each row.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NoteEntry {
     /// Absolute path on disk.
     pub path: PathBuf,

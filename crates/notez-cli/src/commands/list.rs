@@ -3,9 +3,9 @@
 use anyhow::Result;
 use console::Style;
 
-use crate::config::{NotezMetadata, ProjectRegistry};
-use crate::config::paths;
-use crate::config::Config;
+use notez_core::config::{NotezMetadata, ProjectRegistry};
+use notez_core::config::paths;
+use notez_core::config::Config;
 
 pub fn run(config: &Config) -> Result<()> {
     let reg = ProjectRegistry::load()?;
@@ -28,7 +28,7 @@ pub fn run(config: &Config) -> Result<()> {
         let exists = path.exists();
         let marker = if exists { "" } else { "  (not found)" };
         let marker_style = if exists { Style::new() } else { warn.clone() };
-        let path_str = crate::util::tilde::contract(&path);
+        let path_str = notez_core::util::tilde::contract(&path);
 
         if display == name {
             println!(
