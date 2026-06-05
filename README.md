@@ -65,6 +65,13 @@ cargo build --release
 
 See [DESIGN.md](DESIGN.md) for the architecture, scope model, and test-scenario matrix. Core logic is covered by unit tests (`cargo test`).
 
+## Roadmap
+
+Planned, not yet built (details in [DESIGN.md](DESIGN.md) → *Open questions and future work*):
+
+- **Dates & calendar for todos** — tag a todo with a **deadline** or **event** date and surface it on a calendar. The todoz preview pane already hosts a placeholder calendar; the open decision is the `@date` encoding inside `TODO.md` so it round-trips through the `notez` / `todoz` CLI byte-for-byte (mirroring how `#tags` already work).
+- **Scope migration** — move a note or todo between scopes (e.g. `personal → public`) without losing history.
+
 ## License
 
 MIT.
