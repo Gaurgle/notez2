@@ -9,10 +9,36 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(commands::BoardState::default())
+        .setup(|app| {
+            // Native macOS frosted-glass: the window's own background becomes
+            // a blur of whatever is behind it (the desktop / other windows).
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::Manager;
+                use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial, NSVisualEffectState};
+                let window = app.get_webview_window("main").unwrap();
+                apply_vibrancy(
+                    &window,
+                    NSVisualEffectMaterial::HudWindow,
+                    Some(NSVisualEffectState::Active),
+                    None,
+                )
+                .expect("failed to apply window vibrancy");
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::list_notes,
             commands::list_notes_in_scope,
             commands::read_note,
+            commands::get_note_tags,
+            commands::set_note_tags,
+            commands::list_projects,
+            commands::attach_project,
+            commands::detach_project,
+            commands::sync,
+            commands::migrate_preview,
+            commands::migrate_apply,
             commands::create_note,
             commands::save_note,
             commands::append_log,
@@ -25,6 +51,10 @@ pub fn run() {
             commands::remove_todo,
             commands::reorder_task,
             commands::toggle_collapse,
+            commands::set_task_state,
+            commands::move_todo,
+            commands::collapse_all,
+            commands::create_category,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

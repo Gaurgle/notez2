@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { NoteListItem, Scope, TodoBoard } from "./types";
+import type { NoteListItem, PlanItem, ProjectInfo, Scope, TodoBoard } from "./types";
 
 /** Every note across all four scopes (the headline aggregate view). */
 export const listNotes = () => invoke<NoteListItem[]>("list_notes");
@@ -10,6 +10,10 @@ export const listNotesInScope = (scope: Scope) =>
 
 /** Read a markdown note's contents. */
 export const readNote = (path: string) => invoke<string>("read_note", { path });
+
+/** Set a note's importance flags (zero clears). */
+export const setNoteTags = (path: string, flags: number) =>
+  invoke<void>("set_note_tags", { path, flags });
 
 /** Create a new note; resolves to the new file's path. */
 export const createNote = (scope: Scope, title: string, body: string | null) =>
@@ -38,3 +42,22 @@ export const reorderTask = (start: number, target: number) =>
   invoke<TodoBoard>("reorder_task", { start, target });
 export const toggleCollapse = (idx: number) =>
   invoke<TodoBoard>("toggle_collapse", { idx });
+export const setTaskState = (idx: number, state: "unchecked" | "half" | "checked") =>
+  invoke<TodoBoard>("set_task_state", { idx, state });
+export const moveTodo = (idx: number, up: boolean) =>
+  invoke<TodoBoard>("move_todo", { idx, up });
+export const collapseAll = (collapsed: boolean) =>
+  invoke<TodoBoard>("collapse_all", { collapsed });
+export const createCategory = (name: string) =>
+  invoke<TodoBoard>("create_category", { name });
+
+// --- projects & sync ---
+
+export const listProjects = () => invoke<ProjectInfo[]>("list_projects");
+export const attachProject = (name: string, path: string) =>
+  invoke<ProjectInfo>("attach_project", { name, path });
+export const detachProject = (name: string) => invoke<void>("detach_project", { name });
+export const syncNotez = () => invoke<string>("sync");
+
+export const migratePreview = () => invoke<PlanItem[]>("migrate_preview");
+export const migrateApply = () => invoke<string[]>("migrate_apply");

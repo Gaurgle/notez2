@@ -1,19 +1,28 @@
 <script lang="ts">
   import type { NoteListItem } from "$lib/types";
-  import { SCOPE_META } from "$lib/types";
+  import { SCOPE_META, TAG_DEFS } from "$lib/types";
 
   let {
     notes,
     selectedPath,
     onSelect,
+    onHover,
   }: {
     notes: NoteListItem[];
     selectedPath: string | null;
     onSelect: (note: NoteListItem) => void;
+    onHover: (note: NoteListItem | null) => void;
   } = $props();
+
+  let listEl = $state<HTMLElement>();
+
+  $effect(() => {
+    selectedPath; // re-run when selection changes
+    listEl?.querySelector(".row.active")?.scrollIntoView({ block: "nearest" });
+  });
 </script>
 
-<div class="list">
+<div class="list" bind:this={listEl}>
   {#if notes.length === 0}
     <div class="empty">No notes here yet.</div>
   {:else}
@@ -22,8 +31,20 @@
         class="row"
         class:active={note.path === selectedPath}
         onclick={() => onSelect(note)}
+        onmouseenter={() => onHover(note)}
+        onmouseleave={() => onHover(null)}
       >
         <span class="dot {note.scope}" title={SCOPE_META[note.scope].label}></span>
+        <span class="tagdots">
+          {#each TAG_DEFS as d (d.bit)}
+            <span
+              class="tdot"
+              class:on={(note.flags & d.bit) !== 0}
+              style="--c:{d.color}"
+              title={d.label}
+            ></span>
+          {/each}
+        </span>
         <span class="name">{note.name}</span>
         {#if note.project}
           <span class="project">{note.project}</span>
@@ -37,7 +58,8 @@
   .list {
     overflow-y: auto;
     height: 100%;
-    border-right: 1px solid var(--surface);
+    background: rgba(18, 18, 28, 0.92);
+    border-right: 1px solid var(--border);
   }
   .empty {
     padding: 1rem;
@@ -80,6 +102,24 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     font-size: 0.82rem;
+  }
+  .tagdots {
+    display: flex;
+    gap: 0.22rem;
+    flex-shrink: 0;
+    width: 56px;
+  }
+  .tdot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--faint);
+    opacity: 0.25;
+  }
+  .tdot.on {
+    background: var(--c);
+    opacity: 1;
+    box-shadow: 0 0 5px color-mix(in srgb, var(--c) 55%, transparent);
   }
   .project {
     font-size: 0.68rem;

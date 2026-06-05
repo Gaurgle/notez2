@@ -9,10 +9,14 @@
     path,
     content,
     onSave,
+    dim = false,
+    editable = true,
   }: {
     path: string | null;
     content: string;
     onSave: (content: string) => void;
+    dim?: boolean;
+    editable?: boolean;
   } = $props();
 
   let host = $state<HTMLDivElement>();
@@ -33,26 +37,26 @@
   }
 
   function buildState(doc: string): EditorState {
-    return EditorState.create({
-      doc,
-      extensions: [
-        lineNumbers(),
-        history(),
-        keymap.of([...defaultKeymap, ...historyKeymap]),
-        EditorView.lineWrapping,
-        markdown(),
-        oneDark,
-        EditorView.updateListener.of((u) => {
-          if (u.docChanged && !applyingExternal) {
-            scheduleSave(u.state.doc.toString());
-          }
-        }),
-      ],
-    });
+    const base = [lineNumbers(), EditorView.lineWrapping, markdown(), oneDark];
+    if (!editable) {
+      base.push(EditorState.readOnly.of(true), EditorView.editable.of(false));
+      return EditorState.create({ doc, extensions: base });
+    }
+    base.push(
+      history(),
+      keymap.of([...defaultKeymap, ...historyKeymap]),
+      EditorView.updateListener.of((u) => {
+        if (u.docChanged && !applyingExternal) {
+          scheduleSave(u.state.doc.toString());
+        }
+      })
+    );
+    return EditorState.create({ doc, extensions: base });
   }
 
-  // Re-runs whenever `content` changes (note switch or reload).
+  // Re-runs whenever `content` or `editable` changes.
   $effect(() => {
+    editable; // track
     if (!host) return;
     const state = buildState(content);
     applyingExternal = true;
@@ -71,11 +75,15 @@
   });
 </script>
 
-<div class="editor-pane">
+<div class="editor-pane" class:dim>
   {#if path}
     <div class="editor-bar">
       <span class="editor-path">{path}</span>
-      <span class="save-state" class:dirty={!saved}>{saved ? "saved" : "saving…"}</span>
+      {#if dim}
+        <span class="preview-tag">preview</span>
+      {:else}
+        <span class="save-state" class:dirty={!saved}>{saved ? "saved" : "saving…"}</span>
+      {/if}
     </div>
     <div class="editor" bind:this={host}></div>
   {:else}
@@ -89,6 +97,7 @@
     flex-direction: column;
     height: 100%;
     min-width: 0;
+    background: rgba(18, 18, 28, 0.94);
   }
   .editor-bar {
     display: flex;
@@ -112,6 +121,16 @@
   .save-state.dirty {
     color: var(--accent-global);
   }
+  .preview-tag {
+    font-size: 0.66rem;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .editor-pane.dim .editor {
+    opacity: 0.5;
+    transition: opacity 0.1s;
+  }
   .editor {
     flex: 1;
     overflow: auto;
@@ -120,6 +139,19 @@
   .editor :global(.cm-editor) {
     height: 100%;
     font-size: 0.85rem;
+  }
+  /* Let the glass pane show through the editor instead of oneDark's slab. */
+  .editor :global(.cm-editor),
+  .editor :global(.cm-gutters) {
+    background: transparent !important;
+  }
+  .editor :global(.cm-activeLine),
+  .editor :global(.cm-activeLineGutter) {
+    background: rgba(255, 255, 255, 0.045) !important;
+  }
+  .editor :global(.cm-gutters) {
+    border-right: none;
+    color: var(--faint);
   }
   .editor-empty {
     display: grid;

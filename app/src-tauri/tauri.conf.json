@@ -10,11 +10,14 @@
     "frontendDist": "../build"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "title": "notez",
         "width": 1100,
-        "height": 720
+        "height": 720,
+        "transparent": true,
+        "decorations": true
       }
     ],
     "security": {

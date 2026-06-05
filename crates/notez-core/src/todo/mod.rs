@@ -468,6 +468,58 @@ pub fn remove_task(items: &mut Vec<Task>, idx: usize) {
     derive_parent_states(items);
 }
 
+/// Set a task's check state directly (used for the `[/]` half / "almost done"
+/// mark). Parent states are re-derived afterwards.
+pub fn set_state(items: &mut [Task], idx: usize, state: CheckState) {
+    if idx >= items.len() || items[idx].is_header {
+        return;
+    }
+    items[idx].state = state;
+    derive_parent_states(items);
+}
+
+/// Move a task block to swap with its previous (`up`) or next sibling. Returns
+/// the block's new start index, or the original index if it can't move.
+pub fn move_task(items: &mut [Task], idx: usize, up: bool) -> usize {
+    if idx >= items.len() || items[idx].is_header {
+        return idx;
+    }
+    let depth = items[idx].depth;
+    if up {
+        // Walk back to the previous same-depth sibling's start.
+        let mut j = idx;
+        while j > 0 {
+            j -= 1;
+            if items[j].is_header || items[j].depth < depth {
+                return idx; // no previous sibling
+            }
+            if items[j].depth == depth {
+                let new = perform_drag_move(items, idx, j);
+                derive_parent_states(items);
+                return new;
+            }
+        }
+        idx
+    } else {
+        let end = block_end(items, idx);
+        if end >= items.len() || items[end].is_header || items[end].depth != depth {
+            return idx; // no next sibling
+        }
+        let new = perform_drag_move(items, idx, end);
+        derive_parent_states(items);
+        new
+    }
+}
+
+/// Collapse or expand every header and parent at once.
+pub fn set_all_collapsed(items: &mut [Task], collapsed: bool) {
+    for t in items.iter_mut() {
+        if t.is_header || t.has_subtasks {
+            t.collapsed = collapsed;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

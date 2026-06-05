@@ -1,109 +1,254 @@
-/* Catppuccin Mocha-ish palette, matching the TUI's theme intent. */
+/* notez2 — liquid-glass design system.
+   Translucent frosted panels over a soft aurora, Apple-inspired. */
 :root {
-  --base: #1e1e2e;
-  --mantle: #181825;
-  --surface: #313244;
-  --surface-active: #45475a;
-  --text: #cdd6f4;
-  --subtext: #a6adc8;
-  --accent: #cba6f7;
+  /* Ink */
+  --text: #ecedf4;
+  --subtext: #b4bbd4;
+  --faint: #8b92ad;
 
+  /* Accents (Catppuccin-ish, tuned brighter for glass) */
+  --accent: #cba6f7;
   --accent-personal: #cba6f7; /* mauve */
   --accent-public: #a6e3a1; /* green */
   --accent-local: #89b4fa; /* blue */
   --accent-global: #fab387; /* peach */
+  --danger: #f38ba8;
 
-  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  /* Surfaces — mostly solid for readability; just a hint of translucency. */
+  --glass: rgba(26, 26, 38, 0.94);
+  --glass-strong: rgba(20, 20, 32, 0.98);
+  --glass-hover: rgba(255, 255, 255, 0.06);
+  --glass-active: rgba(255, 255, 255, 0.12);
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --highlight: rgba(255, 255, 255, 0.05);
+  --guide: rgba(255, 255, 255, 0.16);
+  --blur: blur(8px);
+  --shadow: 0 10px 40px rgba(0, 0, 0, 0.38);
+  --radius: 14px;
+  --radius-sm: 9px;
+
+  /* Compatibility tokens used across components, mapped onto the glass system. */
+  --base: #0c0c14;
+  --mantle: rgba(24, 24, 36, 0.92);
+  --surface: rgba(255, 255, 255, 0.09);
+  --surface-active: rgba(255, 255, 255, 0.14);
+
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", sans-serif;
   font-size: 14px;
   color: var(--text);
-  background: var(--base);
   -webkit-font-smoothing: antialiased;
+  font-synthesis: none;
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
-html, body {
+html,
+body {
   margin: 0;
   padding: 0;
   height: 100%;
   overflow: hidden;
-  background: var(--base);
+}
+
+/* Clean solid dark base with a faint, static color wash. */
+html,
+body {
+  background: #14141e;
+}
+
+body {
+  position: relative;
+  background-image:
+    radial-gradient(48% 58% at 12% 14%, rgba(203, 166, 247, 0.08), transparent 70%),
+    radial-gradient(48% 58% at 88% 12%, rgba(137, 180, 250, 0.06), transparent 70%);
+  background-attachment: fixed;
+}
+
+/* Shared view chrome so Notes and Todos look identical. */
+.viewbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  flex-shrink: 0;
+}
+.viewbar .spacer {
+  flex: 1;
+}
+.searchbar {
+  flex: 1;
+  min-width: 0;
+  max-width: 380px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--border);
+  border-radius: 0.45rem;
+  color: var(--text);
+  padding: 0.42rem 0.6rem;
+  font: inherit;
+  font-size: 0.82rem;
+}
+.searchbar:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(203, 166, 247, 0.16);
+}
+.viewbar .counts {
+  font-size: 0.74rem;
+  color: var(--subtext);
+  white-space: nowrap;
+}
+.viewbar .toast {
+  font-size: 0.72rem;
+  color: var(--subtext);
+}
+button.icon {
+  width: 30px;
+  padding: 0.42rem 0;
+  text-align: center;
+}
+
+/* Frosted-panel utility. */
+.glass {
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  border: 1px solid var(--border);
+  box-shadow: inset 0 1px 0 var(--highlight), var(--shadow);
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.22);
+  background-clip: content-box;
 }
 
 /* Shared dialog chrome. */
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.4);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
   display: grid;
   place-items: center;
   z-index: 10;
+  animation: fade 0.16s ease;
+}
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
 }
 .dialog {
-  background: var(--mantle);
-  border: 1px solid var(--surface);
-  border-radius: 0.6rem;
-  padding: 1.25rem;
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: inset 0 1px 0 var(--highlight), 0 24px 70px rgba(0, 0, 0, 0.5);
+  padding: 1.4rem;
   width: 420px;
   max-width: 90vw;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.85rem;
+  animation: pop 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
 }
 .dialog h2 {
   margin: 0;
-  font-size: 0.95rem;
-  color: var(--accent);
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: var(--text);
 }
 .dialog label {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-  font-size: 0.72rem;
-  color: var(--subtext);
+  gap: 0.3rem;
+  font-size: 0.7rem;
+  color: var(--faint);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 .dialog input,
 .dialog textarea,
 .dialog select {
-  background: var(--base);
-  border: 1px solid var(--surface);
-  border-radius: 0.35rem;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   color: var(--text);
-  padding: 0.4rem 0.5rem;
+  padding: 0.5rem 0.6rem;
   font: inherit;
-  font-size: 0.82rem;
+  font-size: 0.85rem;
+  text-transform: none;
+  letter-spacing: normal;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 .dialog input:focus,
 .dialog textarea:focus,
 .dialog select:focus {
   outline: none;
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(203, 166, 247, 0.18);
 }
 .dialog .actions {
   display: flex;
   justify-content: flex-end;
   gap: 0.5rem;
-  margin-top: 0.25rem;
+  margin-top: 0.3rem;
 }
+
+/* Buttons */
 button.primary,
 button.ghost {
-  border-radius: 0.35rem;
-  padding: 0.4rem 0.85rem;
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 1rem;
   font: inherit;
-  font-size: 0.8rem;
+  font-size: 0.82rem;
+  font-weight: 600;
   cursor: pointer;
   border: 1px solid transparent;
+  transition: transform 0.12s, background 0.15s, box-shadow 0.15s;
 }
 button.primary {
-  background: var(--accent);
-  color: var(--base);
-  font-weight: 600;
+  background: linear-gradient(180deg, rgba(203, 166, 247, 0.95), rgba(180, 140, 235, 0.95));
+  color: #1a1626;
+  box-shadow: 0 4px 16px rgba(203, 166, 247, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+button.primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 22px rgba(203, 166, 247, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+button.primary:active {
+  transform: translateY(0);
 }
 button.ghost {
-  background: none;
+  background: var(--glass-hover);
   color: var(--text);
-  border-color: var(--surface);
+  border-color: var(--border);
 }
 button.ghost:hover {
-  background: var(--surface);
+  background: var(--glass-active);
 }

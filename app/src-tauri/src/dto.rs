@@ -21,6 +21,8 @@ pub struct NoteListItem {
     pub scope: Scope,
     /// Owning project, if any.
     pub project: Option<String>,
+    /// 5-bit importance tag flags from the root `.tags` file.
+    pub flags: u8,
 }
 
 impl From<&NoteEntry> for NoteListItem {
@@ -30,6 +32,7 @@ impl From<&NoteEntry> for NoteListItem {
             name: entry.name.clone(),
             scope: entry.scope,
             project: entry.project.clone(),
+            flags: 0,
         }
     }
 }
@@ -49,6 +52,16 @@ pub struct TodoTaskDto {
     pub is_code_todo: bool,
     pub source: String,
     pub section: String,
+}
+
+/// A registered project on this machine.
+#[derive(Serialize)]
+pub struct ProjectInfo {
+    pub name: String,
+    /// Tilde-contracted path for display.
+    pub local_path: String,
+    /// Whether the path exists on this machine.
+    pub reachable: bool,
 }
 
 /// The whole board as a flat, depth-encoded list. The frontend rebuilds the

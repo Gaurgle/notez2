@@ -7,6 +7,8 @@
 pub mod config;
 pub mod core;
 pub mod filter;
+pub mod migrate;
+pub mod note_tags;
 pub mod tags;
 pub mod todo;
 pub mod util;

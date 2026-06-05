@@ -3,6 +3,26 @@
   import TodozView from "$lib/components/TodozView.svelte";
 
   let mode = $state<"notes" | "todoz">("notes");
+
+  function isTyping(target: EventTarget | null): boolean {
+    const el = target as HTMLElement | null;
+    return (
+      el instanceof HTMLInputElement ||
+      el instanceof HTMLTextAreaElement ||
+      (el?.isContentEditable ?? false)
+    );
+  }
+
+  $effect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Tab" && e.ctrlKey && !isTyping(e.target)) {
+        e.preventDefault();
+        mode = mode === "notes" ? "todoz" : "notes";
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 </script>
 
 <div class="shell">
@@ -44,8 +64,11 @@
   }
   .rail {
     width: 64px;
-    background: var(--mantle);
-    border-right: 1px solid var(--surface);
+    background: var(--glass);
+    -webkit-backdrop-filter: var(--blur);
+    backdrop-filter: var(--blur);
+    border-right: 1px solid var(--border);
+    box-shadow: inset 0 1px 0 var(--highlight);
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
@@ -70,8 +93,9 @@
     color: var(--text);
   }
   .rail-btn.active {
-    background: var(--surface-active);
+    background: var(--glass-active);
     color: var(--accent);
+    box-shadow: inset 0 1px 0 var(--highlight), 0 0 18px rgba(203, 166, 247, 0.25);
   }
   .glyph {
     font-size: 1.1rem;

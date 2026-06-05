@@ -5,6 +5,7 @@ export interface NoteListItem {
   name: string;
   scope: Scope;
   project: string | null;
+  flags: number;
 }
 
 export const SCOPE_META: Record<Scope, { label: string; icon: string }> = {
@@ -13,6 +14,20 @@ export const SCOPE_META: Record<Scope, { label: string; icon: string }> = {
   local: { label: "Local", icon: "" },
   global: { label: "Global", icon: "" },
 };
+
+export interface ProjectInfo {
+  name: string;
+  local_path: string;
+  reachable: boolean;
+}
+
+export interface PlanItem {
+  name: string;
+  repo_path: string;
+  from: string;
+  to: string;
+  note: string;
+}
 
 export type CheckState = "unchecked" | "half" | "checked";
 
