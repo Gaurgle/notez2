@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { Toggle } from "melt/builders";
   import TodoItem from "$lib/components/todo/TodoItem.svelte";
+  import TodoPreview from "$lib/components/todo/TodoPreview.svelte";
   import Inspector from "$lib/components/Inspector.svelte";
   import MachineAvatar from "$lib/components/MachineAvatar.svelte";
   import Resizer from "$lib/components/Resizer.svelte";
@@ -31,6 +32,13 @@
   const inspectorToggle = new Toggle({
     value: () => showInspector,
     onValueChange: (v) => (showInspector = v),
+  });
+
+  let showPreview = $state(false);
+  let previewWidth = $state(320);
+  const previewToggle = new Toggle({
+    value: () => showPreview,
+    onValueChange: (v) => (showPreview = v),
   });
 
   /** Resolve a `#token` (without `#`) into a tag bitset, like the CLI:
@@ -221,6 +229,25 @@
         ]
       : []
   );
+  // Preview pane: the selected todo (never a section header) plus its whole
+  // descendant subtree, read from the full flat list.
+  let previewTask = $derived(
+    selectedTask && !selectedTask.is_header ? selectedTask : null
+  );
+  let previewSubtasks = $derived.by(() => {
+    const t = previewTask;
+    if (!t) return [] as TodoTask[];
+    const idx = items.findIndex((i) => i.id === t.id);
+    if (idx < 0) return [] as TodoTask[];
+    const out: TodoTask[] = [];
+    for (let j = idx + 1; j < items.length; j++) {
+      const it = items[j];
+      if (it.is_header || it.depth <= t.depth) break;
+      out.push(it);
+    }
+    return out;
+  });
+
   let pending = $derived(
     items.filter((i) => !i.is_header && i.depth === 0 && i.state !== "checked").length
   );
@@ -476,6 +503,9 @@
       </span>
       <span class="counts">{pending} pending · {done} done</span>
       <div class="spacer"></div>
+      <button class="ghost" class:on={previewToggle.value} {...previewToggle.trigger} title="Preview">
+        Preview
+      </button>
       <button class="ghost" class:on={inspectorToggle.value} {...inspectorToggle.trigger} title="Inspector (i)">
         Inspector
       </button>
@@ -541,6 +571,11 @@
           {/each}
         {/if}
       </div>
+
+      {#if showPreview}
+        <Resizer get={() => previewWidth} set={(n) => (previewWidth = n)} dir={-1} min={240} max={700} />
+        <TodoPreview task={previewTask} subtasks={previewSubtasks} width={previewWidth} />
+      {/if}
 
       {#if showInspector}
         <Resizer get={() => inspectorWidth} set={(n) => (inspectorWidth = n)} dir={-1} min={180} max={520} />
