@@ -59,10 +59,10 @@
   // Preview + inspector both open by default.
   let showPreview = $state(true);
   let showInspector = $state(true);
-  let sidebarWidth = $state(220);
+  let sidebarWidth = $state(190);
   let listWidth = $state(280);
   let previewWidth = $state(440);
-  let inspectorWidth = $state(250);
+  let inspectorWidth = $state(210);
 
   let vimMode = $state(
     typeof localStorage !== "undefined" && localStorage.getItem("notez.vim") === "1"

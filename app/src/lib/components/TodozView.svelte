@@ -23,8 +23,8 @@
   let { active = true }: { active?: boolean } = $props();
 
   let showInspector = $state(typeof window === "undefined" || window.innerWidth >= 1100);
-  let inspectorWidth = $state(250);
-  let sidebarWidth = $state(220);
+  let inspectorWidth = $state(210);
+  let sidebarWidth = $state(190);
 
   /** Resolve a `#token` (without `#`) into a tag bitset, like the CLI:
    *  empty → all, digits → those 1-based tags (OR), else name-prefix match. */
