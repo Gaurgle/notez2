@@ -10,7 +10,7 @@
   import Inspector from "$lib/components/Inspector.svelte";
   import MarkdownPreview from "$lib/components/MarkdownPreview.svelte";
   import Resizer from "$lib/components/Resizer.svelte";
-  import { Toaster } from "melt/builders";
+  import { Toaster, Toggle } from "melt/builders";
   import { SCOPE_META } from "$lib/types";
   import {
     listNotes,
@@ -112,6 +112,12 @@
   let projects = $state<ProjectInfo[]>([]);
   let syncing = $state(false);
   const toaster = new Toaster<{ message: string }>({ closeDelay: 2500 });
+
+  // Toggle switches bound to the existing pane/mode state, so the p / i /
+  // Ctrl+; keyboard shortcuts and the switches stay in sync.
+  const previewToggle = new Toggle({ value: () => showPreview, onValueChange: (v) => (showPreview = v) });
+  const inspectorToggle = new Toggle({ value: () => showInspector, onValueChange: (v) => (showInspector = v) });
+  const vimToggle = new Toggle({ value: () => vimMode, onValueChange: (v) => (vimMode = v) });
 
   let sortMode = $state<"latest" | "oldest" | "name">("latest");
 
@@ -379,11 +385,11 @@
         {sortMode === "latest" ? "Latest" : sortMode === "oldest" ? "Oldest" : "Name"}
       </button>
       <div class="spacer"></div>
-      <button class="ghost" class:on={showPreview} onclick={() => (showPreview = !showPreview)} title="Preview (p)">
-        Preview
+      <button class="switch" class:on={previewToggle.value} {...previewToggle.trigger} title="Preview (p)">
+        <span class="knob"></span>Preview
       </button>
-      <button class="ghost" class:on={showInspector} onclick={() => (showInspector = !showInspector)} title="Inspector (i)">
-        Inspector
+      <button class="switch" class:on={inspectorToggle.value} {...inspectorToggle.trigger} title="Inspector (i)">
+        <span class="knob"></span>Inspector
       </button>
       <button class="primary" onclick={() => (showNewNote = true)}>+ New</button>
       <button class="ghost" onclick={() => (showLog = true)}>Log</button>
@@ -452,13 +458,8 @@
       {#if selectedPath}
         <span class="sb-count">{content.length} chars · {wordCount} words</span>
       {/if}
-      <button
-        class="vim-pill"
-        class:on={vimMode}
-        onclick={() => (vimMode = !vimMode)}
-        title="Toggle vim mode (Ctrl+;)"
-      >
-        VIM
+      <button class="switch" class:on={vimToggle.value} {...vimToggle.trigger} title="Toggle vim mode (Ctrl+;)">
+        <span class="knob"></span>VIM
       </button>
     </div>
   </div>
@@ -596,22 +597,6 @@
   .sb-count {
     color: var(--subtext);
     white-space: nowrap;
-  }
-  .vim-pill {
-    font-size: 0.62rem;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-    padding: 0.1rem 0.5rem;
-    border-radius: 0.6rem;
-    border: 1px solid var(--border);
-    background: var(--glass-hover);
-    color: var(--faint);
-    cursor: pointer;
-  }
-  .vim-pill.on {
-    color: var(--accent-public);
-    background: color-mix(in srgb, var(--accent-public) 18%, transparent);
-    border-color: color-mix(in srgb, var(--accent-public) 40%, transparent);
   }
   .sortbtn {
     padding: 0.42rem 0.7rem;
