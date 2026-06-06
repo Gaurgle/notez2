@@ -42,6 +42,19 @@
     onValueChange: (v) => (showPreview = v),
   });
 
+  // Vim preference is shared app-wide (same localStorage key as notes); the
+  // footer pill is here ready for a future todoz editor.
+  let vimMode = $state(
+    typeof localStorage !== "undefined" && localStorage.getItem("notez.vim") === "1"
+  );
+  let vimStatus = $state("");
+  $effect(() => {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("notez.vim", vimMode ? "1" : "0");
+    }
+  });
+  const vimToggle = new Toggle({ value: () => vimMode, onValueChange: (v) => (vimMode = v) });
+
   /** Resolve a `#token` (without `#`) into a tag bitset, like the CLI:
    *  empty → all, digits → those 1-based tags (OR), else name-prefix match. */
   function tagTokenBits(tok: string): number {
@@ -324,6 +337,11 @@
 
   async function handleKey(e: KeyboardEvent) {
     if (!active) return; // only the visible view handles keys
+    if (e.ctrlKey && e.key === ";") {
+      vimMode = !vimMode;
+      e.preventDefault();
+      return;
+    }
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
       if (e.key === "Escape") (e.target as HTMLElement).blur(); // exit the search box
       return;
@@ -591,6 +609,20 @@
         />
       {/if}
     </div>
+
+    <div class="statusbar">
+      <span class="sb-path">
+        {selectedTask ? selectedTask.text : focusedSource ? "focused section" : "all sections"}
+      </span>
+      <div class="sb-spacer"></div>
+      {#if vimMode && vimStatus}
+        <span class="vim-mode {vimStatus.split('-')[0]}">{vimStatus.replace('-', ' ').toUpperCase()}</span>
+      {/if}
+      <span class="sb-count">{pending} pending · {done} done</span>
+      <button class="vim-pill" class:on={vimToggle.value} {...vimToggle.trigger} title="Toggle vim mode (Ctrl+;)">
+        VIM
+      </button>
+    </div>
   </div>
 
   {#if showHelp}
@@ -816,5 +848,67 @@
     font-size: 0.68rem;
     color: var(--faint);
     text-align: center;
+  }
+
+  .statusbar {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-shrink: 0;
+    padding: 0.25rem 0.75rem;
+    border-top: 1px solid var(--border);
+    background: var(--mantle);
+    font-size: 0.68rem;
+    color: var(--faint);
+  }
+  .sb-path {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 60%;
+  }
+  .sb-spacer {
+    flex: 1;
+  }
+  .sb-count {
+    color: var(--subtext);
+    white-space: nowrap;
+  }
+  .vim-pill {
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    padding: 0.1rem 0.5rem;
+    border-radius: 0.6rem;
+    border: 1px solid var(--border);
+    background: var(--glass-hover);
+    color: var(--faint);
+    cursor: pointer;
+  }
+  .vim-pill.on {
+    color: var(--accent-public);
+    background: color-mix(in srgb, var(--accent-public) 18%, transparent);
+    border-color: color-mix(in srgb, var(--accent-public) 40%, transparent);
+  }
+  .vim-mode {
+    font-weight: 800;
+    font-size: 0.62rem;
+    letter-spacing: 0.06em;
+    padding: 0.1rem 0.5rem;
+    border-radius: 0.4rem;
+    color: #11131a;
+    white-space: nowrap;
+  }
+  .vim-mode.normal {
+    background: var(--accent-local);
+  }
+  .vim-mode.insert {
+    background: var(--accent-public);
+  }
+  .vim-mode.visual {
+    background: var(--accent-global);
+  }
+  .vim-mode.replace {
+    background: var(--danger);
   }
 </style>

@@ -11,6 +11,16 @@
   import MarkdownPreview from "$lib/components/MarkdownPreview.svelte";
   import Resizer from "$lib/components/Resizer.svelte";
   import { Toaster, Toggle } from "melt/builders";
+  import {
+    Eye,
+    PanelRight,
+    Plus,
+    ScrollText,
+    RefreshCw,
+    ArrowDownWideNarrow,
+    ArrowUpNarrowWide,
+    ArrowDownAZ,
+  } from "lucide-svelte";
   import { SCOPE_META } from "$lib/types";
   import {
     listNotes,
@@ -377,24 +387,33 @@
       />
       <span class="counts">{filtered.length} / {notes.length}</span>
       <button
-        class="ghost sortbtn"
+        class="ghost sortbtn iconbtn"
         title="Sort order"
         onclick={() =>
           (sortMode = sortMode === "latest" ? "oldest" : sortMode === "oldest" ? "name" : "latest")}
       >
-        {sortMode === "latest" ? "Latest" : sortMode === "oldest" ? "Oldest" : "Name"}
+        {#if sortMode === "latest"}<ArrowDownWideNarrow size={14} />
+        {:else if sortMode === "oldest"}<ArrowUpNarrowWide size={14} />
+        {:else}<ArrowDownAZ size={14} />{/if}
+        <span>{sortMode === "latest" ? "Latest" : sortMode === "oldest" ? "Oldest" : "Name"}</span>
       </button>
       <div class="spacer"></div>
-      <button class="ghost" class:on={previewToggle.value} {...previewToggle.trigger} title="Preview (p)">
-        Preview
+      <div class="vtoggles">
+        <button class="vtoggle" class:on={previewToggle.value} {...previewToggle.trigger} title="Preview (p)" aria-label="Toggle preview">
+          <Eye size={15} />
+        </button>
+        <button class="vtoggle" class:on={inspectorToggle.value} {...inspectorToggle.trigger} title="Inspector (i)" aria-label="Toggle inspector">
+          <PanelRight size={15} />
+        </button>
+      </div>
+      <button class="ghost iconbtn" onclick={() => (showNewNote = true)} title="New note">
+        <Plus size={15} /><span>New</span>
       </button>
-      <button class="ghost" class:on={inspectorToggle.value} {...inspectorToggle.trigger} title="Inspector (i)">
-        Inspector
+      <button class="ghost iconbtn icononly" onclick={() => (showLog = true)} title="Log" aria-label="Log">
+        <ScrollText size={15} />
       </button>
-      <button class="ghost" onclick={() => (showNewNote = true)}>+ New</button>
-      <button class="ghost" onclick={() => (showLog = true)}>Log</button>
-      <button class="ghost" onclick={doSync} disabled={syncing}>
-        {syncing ? "Syncing…" : "Sync"}
+      <button class="ghost iconbtn icononly" onclick={doSync} disabled={syncing} title="Sync" aria-label="Sync">
+        <span class="ico" class:spin={syncing}><RefreshCw size={15} /></span>
       </button>
     </div>
 
@@ -620,6 +639,55 @@
     font-weight: 500;
     color: var(--subtext);
     min-width: 4.4rem;
+  }
+  /* Compact segmented on/off toggles for the panes. */
+  .vtoggles {
+    display: flex;
+    gap: 2px;
+    padding: 2px;
+    background: rgba(0, 0, 0, 0.22);
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+  }
+  .vtoggle {
+    display: inline-flex;
+    align-items: center;
+    border: none;
+    background: none;
+    color: var(--faint);
+    font: inherit;
+    padding: 0.3rem 0.5rem;
+    border-radius: 0.4rem;
+    cursor: pointer;
+    transition:
+      background 0.12s,
+      color 0.12s;
+  }
+  .vtoggle:hover {
+    color: var(--subtext);
+  }
+  .vtoggle.on {
+    background: color-mix(in srgb, var(--accent) 24%, transparent);
+    color: var(--accent);
+  }
+  .iconbtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+  .iconbtn.icononly {
+    padding: 0.42rem 0.5rem;
+  }
+  .ico {
+    display: inline-flex;
+  }
+  .ico.spin {
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
   .vim-mode {
     font-weight: 800;

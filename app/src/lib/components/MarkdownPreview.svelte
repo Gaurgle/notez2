@@ -36,7 +36,7 @@
   .markdown-body {
     height: 100%;
     overflow-y: auto;
-    padding: 1.5rem 1.75rem 4rem;
+    padding: 1.5rem max(1.75rem, calc((100% - 760px) / 2)) 4rem;
     font-size: 0.95rem;
     line-height: 1.7;
     color: var(--text);
