@@ -193,8 +193,22 @@ Open questions when this is picked up:
   legacy-pkg dependency when the time comes.
 - Interaction with todoz tags (`#blocked`, `#longterm`) and sorting.
 
-Deferred — not in the Melt UI refresh (Phase 1). Captured here so it isn't
-lost.
+**TODO / next steps** (a `Calendar.svelte` placeholder now renders in the
+todoz preview pane, so this is moving from idea to in-progress):
+
+- [ ] Pick the date encoding: an inline `@YYYY-MM-DD` token on the todo line,
+  parsed by notez-core next to `#tags`, so `TODO.md` still round-trips through
+  the CLI untouched. This is the gating decision.
+- [ ] Parse / serialize `@date` tokens in notez-core's todo model; expose
+  `due` / `event` fields on the task DTO.
+- [ ] Grow `Calendar.svelte` into a real mini-calendar in the todoz preview
+  pane: set / clear a date on the selected todo, highlight dated todos.
+- [ ] A fuller calendar view aggregating dated todos across sections and scopes.
+- [ ] Extend the same to notes (deadline / event via frontmatter or an inline
+  token).
+- [ ] Date-based sorting and filtering; interplay with `#blocked` / `#longterm`.
+
+Captured here so it isn't lost.
 
 ### Scope migration (move notes/todos between scopes)
 
