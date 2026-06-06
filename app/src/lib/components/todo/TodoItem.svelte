@@ -1,6 +1,8 @@
 <script lang="ts">
   import { TAG_DEFS } from "$lib/types";
   import type { TodoTask } from "$lib/types";
+  import Avatar from "$lib/components/Avatar.svelte";
+  import { mockProjectAuthors } from "$lib/mock";
 
   let {
     task,
@@ -100,6 +102,11 @@
       {task.collapsed ? "▸" : "▾"}
     </button>
     <span class="htitle">{task.text}</span>
+    <span class="hdr-avatars">
+      {#each mockProjectAuthors(task.text).slice(0, 4) as a (a)}
+        <Avatar name={a} size={16} />
+      {/each}
+    </span>
   {:else}
     <span class="guides">
       {#each prefix as line, c (c)}
@@ -185,6 +192,14 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .hdr-avatars {
+    display: inline-flex;
+    flex-shrink: 0;
+    margin-right: 0.2rem;
+  }
+  .hdr-avatars :global(.avatar:not(:first-child)) {
+    margin-left: -6px;
   }
 
   /* importance tags, left gutter */
@@ -316,7 +331,6 @@
   }
   .row.done .text {
     color: var(--faint);
-    text-decoration: line-through;
   }
   .edit {
     flex: 1;

@@ -258,3 +258,53 @@ button.ghost.on {
   color: var(--accent);
   border-color: color-mix(in srgb, var(--accent) 26%, transparent);
 }
+
+/* Shared toolbar building blocks so the Notes and Todos toolbars match. */
+.iconbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.iconbtn.icononly {
+  padding: 0.42rem 0.5rem;
+}
+.ico {
+  display: inline-flex;
+}
+.ico.spin {
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+/* Pane indicator toggles (preview / inspector): faint icons that read as
+   status indicators rather than buttons, but still toggle on click. */
+.pane-toggles {
+  display: flex;
+  gap: 0.1rem;
+}
+.pane-toggle {
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  background: none;
+  color: var(--faint);
+  opacity: 0.38;
+  padding: 0.3rem;
+  border-radius: 0.35rem;
+  cursor: pointer;
+  transition:
+    opacity 0.12s,
+    color 0.12s,
+    background 0.12s;
+}
+.pane-toggle:hover {
+  opacity: 0.8;
+  background: var(--glass-hover);
+}
+.pane-toggle.on {
+  opacity: 1;
+  color: var(--accent);
+}

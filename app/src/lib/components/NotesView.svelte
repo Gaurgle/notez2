@@ -22,6 +22,8 @@
     ArrowDownAZ,
   } from "lucide-svelte";
   import { SCOPE_META } from "$lib/types";
+  import { mockProjectAuthors, relativeTime } from "$lib/mock";
+  import { projectStats, countBy } from "$lib/stats.svelte";
   import {
     listNotes,
     readNote,
@@ -95,6 +97,65 @@
   let previewPaneContent = $derived(previewing ? previewContent : liveContent);
   let wordCount = $derived(content.trim() ? content.trim().split(/\s+/).length : 0);
 
+  // Hovering a scope/project in the sidebar shows that group's contributors +
+  // activity in the inspector; otherwise the inspector reflects the note.
+  let hoveredNav = $state<{ kind: "scope" | "project"; name: string } | null>(null);
+  let insp = $derived.by(() => {
+    if (hoveredNav) {
+      const nav = hoveredNav;
+      const isScope = nav.kind === "scope";
+      const label = isScope
+        ? nav.name === "all"
+          ? "All notes"
+          : SCOPE_META[nav.name as Scope].label
+        : nav.name;
+      const set = isScope
+        ? notes.filter((n) => nav.name === "all" || n.scope === nav.name)
+        : notes.filter((n) => n.project === nav.name);
+      const latest = set.reduce((m, n) => Math.max(m, n.modified), 0);
+      return {
+        title: label,
+        scope: isScope && nav.name !== "all" ? nav.name : null,
+        flags: 0,
+        showTags: false,
+        people: mockProjectAuthors(nav.name),
+        time: latest ? relativeTime(latest) : null,
+        rows: [
+          { label: isScope ? "Scope" : "Project", value: label },
+          { label: "Notes", value: String(set.length) },
+          ...(isScope
+            ? []
+            : [{ label: "Todos", value: String(projectStats.todos[nav.name] ?? 0) }]),
+        ],
+      };
+    }
+    const n = inspected;
+    if (!n) {
+      return {
+        title: null,
+        scope: null,
+        flags: 0,
+        showTags: true,
+        people: [] as string[],
+        time: null as string | null,
+        rows: [] as { label: string; value: string }[],
+      };
+    }
+    return {
+      title: n.name,
+      scope: n.scope as string,
+      flags: n.flags,
+      showTags: true,
+      people: mockProjectAuthors(n.project ?? n.name),
+      time: relativeTime(n.modified),
+      rows: [
+        { label: "Scope", value: SCOPE_META[n.scope].label },
+        { label: "Project", value: n.project ?? "—" },
+        { label: "Path", value: n.path },
+      ],
+    };
+  });
+
   function onHover(note: NoteListItem | null) {
     // Volatile peek: leaving a row (or any keypress) reverts to the selected
     // note, so the selected note stays accessible.
@@ -152,6 +213,7 @@
   async function refresh(selectPath?: string) {
     try {
       notes = await listNotes();
+      projectStats.notes = countBy(notes, (n) => n.project);
       error = null;
       if (selectPath) {
         const hit = notes.find((n) => n.path === selectPath);
@@ -372,6 +434,7 @@
     onAttach={() => (showAttach = true)}
     {onDetach}
     onMigrate={() => (showMigrate = true)}
+    onHover={(item) => (hoveredNav = item)}
     width={sidebarWidth}
   />
   <Resizer get={() => sidebarWidth} set={(n) => (sidebarWidth = n)} dir={1} min={170} max={420} />
@@ -398,16 +461,8 @@
         <span>{sortMode === "latest" ? "Latest" : sortMode === "oldest" ? "Oldest" : "Name"}</span>
       </button>
       <div class="spacer"></div>
-      <div class="vtoggles">
-        <button class="vtoggle" class:on={previewToggle.value} {...previewToggle.trigger} title="Preview (p)" aria-label="Toggle preview">
-          <Eye size={15} />
-        </button>
-        <button class="vtoggle" class:on={inspectorToggle.value} {...inspectorToggle.trigger} title="Inspector (i)" aria-label="Toggle inspector">
-          <PanelRight size={15} />
-        </button>
-      </div>
-      <button class="ghost iconbtn" onclick={() => (showNewNote = true)} title="New note">
-        <Plus size={15} /><span>New</span>
+      <button class="ghost iconbtn icononly" onclick={() => (showNewNote = true)} title="New note" aria-label="New note">
+        <Plus size={16} />
       </button>
       <button class="ghost iconbtn icononly" onclick={() => (showLog = true)} title="Log" aria-label="Log">
         <ScrollText size={15} />
@@ -454,16 +509,13 @@
         <Resizer get={() => inspectorWidth} set={(n) => (inspectorWidth = n)} dir={-1} min={180} max={520} />
         <Inspector
           width={inspectorWidth}
-          title={inspected?.name ?? null}
-          scope={inspected?.scope ?? null}
-          flags={inspected?.flags ?? 0}
-          rows={inspected
-            ? [
-                { label: "Scope", value: SCOPE_META[inspected.scope].label },
-                { label: "Project", value: inspected.project ?? "—" },
-                { label: "Path", value: inspected.path },
-              ]
-            : []}
+          title={insp.title}
+          scope={insp.scope}
+          flags={insp.flags}
+          showTags={insp.showTags}
+          people={insp.people}
+          time={insp.time}
+          rows={insp.rows}
         />
       {/if}
     </div>
@@ -477,6 +529,14 @@
       {#if selectedPath}
         <span class="sb-count">{content.length} chars · {wordCount} words</span>
       {/if}
+      <div class="pane-toggles">
+        <button class="pane-toggle" class:on={previewToggle.value} {...previewToggle.trigger} title="Preview (p)" aria-label="Toggle preview">
+          <Eye size={14} />
+        </button>
+        <button class="pane-toggle" class:on={inspectorToggle.value} {...inspectorToggle.trigger} title="Inspector (i)" aria-label="Toggle inspector">
+          <PanelRight size={14} />
+        </button>
+      </div>
       <button class="vim-pill" class:on={vimToggle.value} {...vimToggle.trigger} title="Toggle vim mode (Ctrl+;)">
         VIM
       </button>
@@ -639,55 +699,6 @@
     font-weight: 500;
     color: var(--subtext);
     min-width: 4.4rem;
-  }
-  /* Compact segmented on/off toggles for the panes. */
-  .vtoggles {
-    display: flex;
-    gap: 2px;
-    padding: 2px;
-    background: rgba(0, 0, 0, 0.22);
-    border: 1px solid var(--border);
-    border-radius: 0.5rem;
-  }
-  .vtoggle {
-    display: inline-flex;
-    align-items: center;
-    border: none;
-    background: none;
-    color: var(--faint);
-    font: inherit;
-    padding: 0.3rem 0.5rem;
-    border-radius: 0.4rem;
-    cursor: pointer;
-    transition:
-      background 0.12s,
-      color 0.12s;
-  }
-  .vtoggle:hover {
-    color: var(--subtext);
-  }
-  .vtoggle.on {
-    background: color-mix(in srgb, var(--accent) 24%, transparent);
-    color: var(--accent);
-  }
-  .iconbtn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-  }
-  .iconbtn.icononly {
-    padding: 0.42rem 0.5rem;
-  }
-  .ico {
-    display: inline-flex;
-  }
-  .ico.spin {
-    animation: spin 0.8s linear infinite;
-  }
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
   }
   .vim-mode {
     font-weight: 800;

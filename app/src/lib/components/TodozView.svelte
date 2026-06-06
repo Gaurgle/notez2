@@ -7,6 +7,9 @@
   import Inspector from "$lib/components/Inspector.svelte";
   import MachineAvatar from "$lib/components/MachineAvatar.svelte";
   import Resizer from "$lib/components/Resizer.svelte";
+  import { Eye, PanelRight, Plus, HelpCircle } from "lucide-svelte";
+  import { mockAuthor, mockAgo, mockProjectAuthors } from "$lib/mock";
+  import { projectStats, countBy } from "$lib/stats.svelte";
   import {
     loadTodoBoard,
     toggleTask,
@@ -101,6 +104,11 @@
   async function reload() {
     try {
       items = (await loadTodoBoard()).items;
+      // section === project name for project TODO.md files.
+      projectStats.todos = countBy(
+        items.filter((t) => !t.is_header),
+        (t) => t.section
+      );
       error = null;
     } catch (e) {
       error = String(e);
@@ -207,7 +215,7 @@
 
   // Section list for the left navigator (mirrors the notes scope sidebar).
   function sectionStats(list: TodoTask[]) {
-    const secs: { source: string; label: string; pending: number }[] = [];
+    const secs: { source: string; label: string; project: string; pending: number }[] = [];
     for (let i = 0; i < list.length; i++) {
       if (!list[i].is_header) continue;
       let pending = 0;
@@ -215,7 +223,12 @@
         if (list[j].is_header) break;
         if (list[j].depth === 0 && list[j].state !== "checked") pending++;
       }
-      secs.push({ source: list[i].source, label: list[i].text, pending });
+      secs.push({
+        source: list[i].source,
+        label: list[i].text,
+        project: list[i].section,
+        pending,
+      });
     }
     return secs;
   }
@@ -224,6 +237,9 @@
   async function toolbarNew() {
     const sel = selectedTask ?? visible[0];
     if (!sel) return;
+    if (sel.collapsed && sel.is_header) {
+      await apply(toggleCollapse(sel.id));
+    }
     const depth = sel.is_header ? 0 : sel.depth;
     items = (await addTodo(sel.id, depth, "new task")).items;
     selectId(sel.id + 1);
@@ -243,6 +259,68 @@
         ]
       : []
   );
+
+  // Hovering a section in the navigator shows that section's contributors +
+  // counts in the inspector; otherwise it reflects the hovered/selected todo.
+  let hoveredSection = $state<{
+    source: string | null;
+    label: string;
+    project: string | null;
+  } | null>(null);
+  let tinsp = $derived.by(() => {
+    if (hoveredSection) {
+      const sec = hoveredSection;
+      if (sec.source === null) {
+        const totalTodos = items.filter((t) => !t.is_header).length;
+        const totalNotes = Object.values(projectStats.notes).reduce((a, b) => a + b, 0);
+        return {
+          title: "All sections",
+          flags: 0,
+          showTags: false,
+          people: [] as string[],
+          time: null as string | null,
+          rows: [
+            { label: "Todos", value: String(totalTodos) },
+            { label: "Notes", value: String(totalNotes) },
+          ],
+        };
+      }
+      const proj = sec.project;
+      const its = items.filter((t) => !t.is_header && t.source === sec.source);
+      const pend = its.filter((t) => t.state !== "checked").length;
+      return {
+        title: sec.label,
+        flags: 0,
+        showTags: false,
+        people: mockProjectAuthors(sec.label),
+        time: null as string | null,
+        rows: [
+          { label: "Todos", value: String(proj ? (projectStats.todos[proj] ?? its.length) : its.length) },
+          { label: "Notes", value: String(proj ? (projectStats.notes[proj] ?? 0) : 0) },
+          { label: "Pending", value: String(pend) },
+        ],
+      };
+    }
+    const t = inspected;
+    if (!t) {
+      return {
+        title: null,
+        flags: 0,
+        showTags: true,
+        people: [] as string[],
+        time: null as string | null,
+        rows: [] as { label: string; value: string }[],
+      };
+    }
+    return {
+      title: t.text,
+      flags: t.flags,
+      showTags: !t.is_header,
+      people: t.is_header ? mockProjectAuthors(t.text) : [mockAuthor(t.id)],
+      time: t.is_header ? null : mockAgo(t.id),
+      rows: inspectorRows,
+    };
+  });
   // Preview pane: the selected todo (never a section header) plus its whole
   // descendant subtree, read from the full flat list.
   let previewTask = $derived(
@@ -313,6 +391,11 @@
   async function newTask(subtask: boolean) {
     const sel = selectedTask;
     if (!sel) return;
+    // Adding into a collapsed category (or a collapsed parent, for a subtask)
+    // would hide the new item — open the container first so it's visible.
+    if (sel.collapsed && (sel.is_header || subtask)) {
+      await apply(toggleCollapse(sel.id));
+    }
     const depth = sel.is_header ? 0 : subtask ? Math.min(sel.depth + 1, 2) : sel.depth;
     items = (await addTodo(sel.id, depth, "new task")).items;
     const newId = sel.id + 1;
@@ -478,6 +561,9 @@
         class="item"
         class:active={focusedSource === null}
         onclick={() => (focusedSource = null)}
+        onmouseenter={() =>
+          (hoveredSection = { source: null, label: "All sections", project: null })}
+        onmouseleave={() => (hoveredSection = null)}
       >
         <span class="item-label">All sections</span>
         <span class="count">{pending}</span>
@@ -490,6 +576,9 @@
             focusedSource = s.source;
             selPos = 0;
           }}
+          onmouseenter={() =>
+            (hoveredSection = { source: s.source, label: s.label, project: s.project })}
+          onmouseleave={() => (hoveredSection = null)}
         >
           <span class="item-label">{s.label}</span>
           <span class="count">{s.pending}</span>
@@ -522,14 +611,12 @@
       </span>
       <span class="counts">{pending} pending · {done} done</span>
       <div class="spacer"></div>
-      <button class="ghost" class:on={previewToggle.value} {...previewToggle.trigger} title="Preview">
-        Preview
+      <button class="ghost iconbtn icononly" onclick={toolbarNew} title="New todo" aria-label="New todo">
+        <Plus size={16} />
       </button>
-      <button class="ghost" class:on={inspectorToggle.value} {...inspectorToggle.trigger} title="Inspector (i)">
-        Inspector
+      <button class="ghost iconbtn icononly" title="Keybindings" aria-label="Keybindings" onclick={() => (showHelp = true)}>
+        <HelpCircle size={15} />
       </button>
-      <button class="ghost" onclick={toolbarNew}>+ New</button>
-      <button class="ghost icon" title="keybindings" onclick={() => (showHelp = true)}>?</button>
     </div>
 
     {#if categoryMode}
@@ -603,9 +690,12 @@
         <Resizer get={() => inspectorWidth} set={(n) => (inspectorWidth = n)} dir={-1} min={180} max={520} />
         <Inspector
           width={inspectorWidth}
-          title={inspected ? inspected.text : null}
-          flags={inspected?.flags ?? 0}
-          rows={inspectorRows}
+          title={tinsp.title}
+          flags={tinsp.flags}
+          showTags={tinsp.showTags}
+          people={tinsp.people}
+          time={tinsp.time}
+          rows={tinsp.rows}
         />
       {/if}
     </div>
@@ -619,6 +709,14 @@
         <span class="vim-mode {vimStatus.split('-')[0]}">{vimStatus.replace('-', ' ').toUpperCase()}</span>
       {/if}
       <span class="sb-count">{pending} pending · {done} done</span>
+      <div class="pane-toggles">
+        <button class="pane-toggle" class:on={previewToggle.value} {...previewToggle.trigger} title="Preview (p)" aria-label="Toggle preview">
+          <Eye size={14} />
+        </button>
+        <button class="pane-toggle" class:on={inspectorToggle.value} {...inspectorToggle.trigger} title="Inspector (i)" aria-label="Toggle inspector">
+          <PanelRight size={14} />
+        </button>
+      </div>
       <button class="vim-pill" class:on={vimToggle.value} {...vimToggle.trigger} title="Toggle vim mode (Ctrl+;)">
         VIM
       </button>

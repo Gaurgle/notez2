@@ -13,6 +13,7 @@
     onAttach,
     onDetach,
     onMigrate,
+    onHover = () => {},
     width = 220,
   }: {
     notes: NoteListItem[];
@@ -24,6 +25,7 @@
     onAttach: () => void;
     onDetach: (name: string) => void;
     onMigrate: () => void;
+    onHover?: (item: { kind: "scope" | "project"; name: string } | null) => void;
     width?: number;
   } = $props();
 
@@ -32,6 +34,12 @@
       ? notes.length
       : notes.filter((n) => n.scope === scope).length;
   }
+
+  // Hover handlers (spreadable) so hovering a scope/project drives the inspector.
+  const navHov = (kind: "scope" | "project", name: string) => ({
+    onmouseenter: () => onHover({ kind, name }),
+    onmouseleave: () => onHover(null),
+  });
 </script>
 
 <aside class="sidebar" style="width:{width}px">
@@ -46,6 +54,7 @@
       class="item"
       class:active={activeProject === null && activeScope === "all"}
       onclick={() => onScope("all")}
+      {...navHov("scope", "all")}
     >
       <span class="item-label">All notes</span>
       <span class="count">{countFor("all")}</span>
@@ -54,6 +63,7 @@
       class="item"
       class:active={activeProject === null && activeScope === "personal"}
       onclick={() => onScope("personal")}
+      {...navHov("scope", "personal")}
     >
       <span class="dot personal"></span>
       <span class="item-label">{SCOPE_META.personal.label}</span>
@@ -63,6 +73,7 @@
       class="item"
       class:active={activeProject === null && activeScope === "public"}
       onclick={() => onScope("public")}
+      {...navHov("scope", "public")}
     >
       <span class="dot public"></span>
       <span class="item-label">{SCOPE_META.public.label}</span>
@@ -72,6 +83,7 @@
       class="item"
       class:active={activeProject === null && activeScope === "local"}
       onclick={() => onScope("local")}
+      {...navHov("scope", "local")}
     >
       <span class="dot local"></span>
       <span class="item-label">{SCOPE_META.local.label}</span>
@@ -81,6 +93,7 @@
       class="item"
       class:active={activeProject === null && activeScope === "global"}
       onclick={() => onScope("global")}
+      {...navHov("scope", "global")}
     >
       <span class="dot global"></span>
       <span class="item-label">{SCOPE_META.global.label}</span>
@@ -103,6 +116,7 @@
             class:active={activeProject === p.name}
             class:dim={!p.reachable}
             onclick={() => onProject(p.name)}
+            {...navHov("project", p.name)}
             title={p.local_path}
           >
             <span class="item-label">{p.name}</span>

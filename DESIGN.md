@@ -272,6 +272,45 @@ is fragile. The tree TUI sticks to the keyboard `m` keybind only.
 The two paths converge on the same internal move() function so behavior is
 identical regardless of input modality.
 
+### Authorship + activity, via GitHub identity (future)
+
+Once the desktop app authenticates with GitHub, every note and todo can carry
+**who** touched it and **when** — surfaced on the row as a small author avatar
+and a relative time ("2d ago"). A mock version of this already renders in the
+todoz rows (deterministic placeholder data) to evaluate the layout.
+
+- Identity comes from GitHub auth; the avatar/initial and name follow the
+  GitHub user. Long term this generalizes to other forges (GitLab, etc.).
+- The "when" reuses the date model from the calendar work above (inline
+  `@date`-style tokens that survive the CLI round-trip), plus git history as a
+  secondary source of truth for created/last-touched.
+- This is what makes a **richer task lifecycle** meaningful: beyond the current
+  tri-state checkbox (`[ ]` / `[/]` / `[x]`), a todo could be **done**,
+  **deferred**, or **scrapped/won't-do**, with the row showing the state + who
+  set it + when. Encoding must still round-trip byte-for-byte through `todoz`
+  (likely an inline status token next to `#tags` / `@date`).
+
+### A repo-bound ticket / kanban layer (big-picture, future)
+
+The natural next layer is a **Trello-style ticket board** bound to the
+project/repo — tickets with status columns, assignees (GitHub users), and links
+to the notes and todos that already live with the repo. This ties the pieces
+into one workspace:
+
+- **Git authorizes everything.** GitHub identity = who can see/edit; the repo =
+  the boundary. Notes, todoz, tickets (and chat, below) all scope to the repo.
+- **Everything syncs the same way: through git.** Tickets persist as files in
+  the repo (e.g. markdown + frontmatter, or a structured dir), so they sync,
+  diff, and merge with the same byte-for-byte CLI-compatible discipline as
+  notes/todoz. No separate backend; GitHub is the sync substrate.
+- **`spaze` (the CLI chat tool) folds in** as the conversation layer — chat
+  threads attachable to a ticket / repo, same identity, same git-backed sync.
+
+Design principle for all of the above: **it must always work and always sync**,
+which means every new artifact is a plain file in the repo with an encoding the
+CLI tools can read and write losslessly. Build the data model first (round-trip
+tests), UI second. Captured here as direction, not committed scope.
+
 ## Test scenarios
 
 A representative matrix to validate behavior end-to-end. These are not unit

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { TAG_DEFS } from "$lib/types";
+  import Avatar from "$lib/components/Avatar.svelte";
 
   let {
     title,
@@ -7,12 +8,18 @@
     flags = 0,
     rows = [],
     width = 250,
+    people = [],
+    time = null,
+    showTags = true,
   }: {
     title: string | null;
     scope?: string | null;
     flags?: number;
     rows?: { label: string; value: string }[];
     width?: number;
+    people?: string[];
+    time?: string | null;
+    showTags?: boolean;
   } = $props();
 </script>
 
@@ -25,14 +32,28 @@
       <span class="badge {scope}">{scope}</span>
     {/if}
 
-    <div class="sec-label">Importance</div>
-    <div class="tags">
-      {#each TAG_DEFS as d (d.bit)}
-        <span class="tag" class:on={(flags & d.bit) !== 0} style="--c:{d.color}">
-          <span class="td"></span>{d.label}
+    {#if people.length}
+      <div class="sec-label">Activity</div>
+      <div class="people">
+        <span class="avatars">
+          {#each people as p (p)}<Avatar name={p} size={22} />{/each}
         </span>
-      {/each}
-    </div>
+        <span class="people-meta">
+          {people.join(", ")}{#if time}<span class="dot-sep">·</span>{time}{/if}
+        </span>
+      </div>
+    {/if}
+
+    {#if showTags}
+      <div class="sec-label">Importance</div>
+      <div class="tags">
+        {#each TAG_DEFS as d (d.bit)}
+          <span class="tag" class:on={(flags & d.bit) !== 0} style="--c:{d.color}">
+            <span class="td"></span>{d.label}
+          </span>
+        {/each}
+      </div>
+    {/if}
 
     <dl>
       {#each rows as r (r.label)}
@@ -149,5 +170,25 @@
     margin: 0;
     color: var(--subtext);
     word-break: break-all;
+  }
+  .people {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.4rem;
+  }
+  .avatars {
+    display: inline-flex;
+  }
+  .avatars :global(.avatar:not(:first-child)) {
+    margin-left: -7px;
+  }
+  .people-meta {
+    color: var(--subtext);
+    font-size: 0.74rem;
+  }
+  .dot-sep {
+    margin: 0 0.3rem;
+    color: var(--faint);
   }
 </style>
