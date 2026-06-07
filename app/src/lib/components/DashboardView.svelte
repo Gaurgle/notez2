@@ -1,6 +1,8 @@
 <script lang="ts">
-  // Mock "home" dashboard. Only the clock + the calendar month are real.
+  // Mock "home" dashboard. The clock, the calendar month, and the weather
+  // (Open-Meteo) are real; the rest is mock.
   import Avatar from "$lib/components/Avatar.svelte";
+  import WeatherWidget from "$lib/components/WeatherWidget.svelte";
   import { hashStr } from "$lib/mock";
   import {
     CloudSun,
@@ -26,8 +28,9 @@
   let greeting = $derived(
     now.getHours() < 12 ? "Good morning" : now.getHours() < 18 ? "Good afternoon" : "Good evening"
   );
-  let hm = $derived(now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
-  let ss = $derived(now.toLocaleTimeString([], { second: "2-digit" }).replace(/\D/g, ""));
+  let clock = $derived(
+    now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+  );
   let dateStr = $derived(
     now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })
   );
@@ -141,11 +144,7 @@
         <div class="hello">{greeting}, you</div>
         <div class="date">{dateStr}</div>
       </div>
-      <div class="clock"><span class="hm">{hm}</span><span class="ss">{ss}</span></div>
-      <div class="weather">
-        <CloudSun size={28} />
-        <div><div class="w-temp">7°</div><div class="w-place">Stockholm</div></div>
-      </div>
+      <div class="clock">{clock}</div>
     </header>
 
     <div class="tiles">
@@ -191,6 +190,11 @@
     </div>
 
     <div class="detail">
+      <section class="card weather-card">
+        <div class="card-head"><CloudSun size={13} /> Weather</div>
+        <WeatherWidget />
+      </section>
+
       <section class="card">
         <div class="card-head"><FolderGit2 size={13} /> Repos</div>
         <ul class="list">
@@ -291,39 +295,16 @@
   }
   .clock {
     margin-left: auto;
-    display: flex;
-    align-items: baseline;
-    color: var(--accent);
-    font-variant-numeric: tabular-nums;
-  }
-  .hm {
     font-size: 2.1rem;
     font-weight: 700;
     line-height: 1;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.01em;
   }
-  .ss {
-    font-size: 0.95rem;
-    font-weight: 600;
-    color: var(--subtext);
-    margin-left: 0.25rem;
-  }
-  .weather {
+  .weather-card {
     display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    color: var(--accent-global);
-    padding-left: 1rem;
-    border-left: 1px solid var(--border);
-  }
-  .w-temp {
-    font-size: 1.3rem;
-    font-weight: 700;
-    color: var(--text);
-    line-height: 1;
-  }
-  .w-place {
-    font-size: 0.68rem;
-    color: var(--faint);
+    flex-direction: column;
   }
 
   .card {
@@ -408,7 +389,7 @@
   }
   .detail {
     display: grid;
-    grid-template-columns: 1fr 1.3fr 1fr;
+    grid-template-columns: 1.4fr 1fr 1.3fr 0.9fr;
     gap: 0.7rem;
     align-items: stretch;
   }

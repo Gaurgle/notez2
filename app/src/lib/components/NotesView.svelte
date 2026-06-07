@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { SvelteSet } from "svelte/reactivity";
   import Sidebar from "$lib/components/Sidebar.svelte";
   import NoteList from "$lib/components/NoteList.svelte";
   import NoteEditor from "$lib/components/NoteEditor.svelte";
@@ -79,7 +80,7 @@
   let previewWidth = $state(440);
   let inspectorWidth = $state(210);
   let calendarWidth = $state(250);
-  let dayFilter = $state<string | null>(null); // ISO date the calendar filtered to
+  let selectedDays = new SvelteSet<string>(); // reactive; ISO days the calendar filters to
 
   let vimMode = $state(
     typeof localStorage !== "undefined" && localStorage.getItem("notez.vim") === "1"
@@ -212,7 +213,7 @@
         (n) =>
           (activeScope === "all" || n.scope === activeScope) &&
           (activeProject === null || n.project === activeProject) &&
-          (dayFilter === null || noteDay(n) === dayFilter) &&
+          (selectedDays.size === 0 || selectedDays.has(noteDay(n))) &&
           (searchText.trim() === "" ||
             n.name.toLowerCase().includes(searchText.toLowerCase()))
       )
@@ -527,7 +528,12 @@
         <div class="calendar-col" style="width:{calendarWidth}px">
           <Calendar
             marked={notesByDay}
-            onPick={(iso) => (dayFilter = dayFilter === iso ? null : iso)}
+            selected={selectedDays}
+            onPick={(iso) => {
+              if (selectedDays.has(iso)) selectedDays.delete(iso);
+              else selectedDays.add(iso);
+            }}
+            onClear={() => selectedDays.clear()}
           />
         </div>
       {/if}

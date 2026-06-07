@@ -2,23 +2,29 @@
   import { onMount } from "svelte";
 
   // Reusable month calendar. Each view supplies its own context:
-  //   marked  — ISO "YYYY-MM-DD" dates to flag with an event dot
-  //   onPick  — called when a day is clicked (e.g. filter notes by that day)
-  //   label   — small badge text (e.g. "mock"); hidden when empty
+  //   marked   — ISO "YYYY-MM-DD" dates to flag with an event dot
+  //   selected — parent-owned set of picked days (multi-select); highlighted
+  //   onPick   — called when a day is clicked (e.g. toggle a day filter)
+  //   onClear  — called by the clear button (shown when selected is non-empty)
+  //   label    — small badge text (e.g. "mock"); hidden when empty
   // With no `marked`, it falls back to a decorative mock so todoz stays alive.
   let {
     marked,
+    selected,
     onPick,
+    onClear,
     label = "",
   }: {
     marked?: Set<string>;
+    selected?: Set<string>;
     onPick?: (iso: string, date: Date) => void;
+    onClear?: () => void;
     label?: string;
   } = $props();
 
   let ref = $state<Date | null>(null); // first day of the viewed month
   let today = $state<Date | null>(null);
-  let selected = $state<string | null>(null);
+  let localSel = $state<string | null>(null); // single-select fallback
 
   onMount(() => {
     const now = new Date();
@@ -57,9 +63,13 @@
     if (marked) return marked.has(iso(d));
     return !!today && d.getMonth() === today.getMonth() && MOCK.has(d.getDate());
   }
+  function isSelected(d: Date): boolean {
+    const k = iso(d);
+    return selected ? selected.has(k) : localSel === k;
+  }
   function pick(d: Date) {
     const k = iso(d);
-    selected = selected === k ? null : k;
+    if (!selected) localSel = localSel === k ? null : k;
     onPick?.(k, d);
   }
   function step(delta: number) {
@@ -72,6 +82,9 @@
   <div class="cal-head">
     <span class="title">{monthLabel}</span>
     {#if label}<span class="placeholder">{label}</span>{/if}
+    {#if onClear && selected && selected.size > 0}
+      <button class="clear" onclick={onClear} title="Clear day filter">clear ({selected.size})</button>
+    {/if}
     <div class="nav">
       <button aria-label="previous month" onclick={() => step(-1)}>‹</button>
       <button aria-label="next month" onclick={() => step(1)}>›</button>
@@ -90,7 +103,7 @@
         <button
           class="day"
           class:today={isToday(d)}
-          class:selected={selected === iso(d)}
+          class:selected={isSelected(d)}
           onclick={() => pick(d)}
         >
           <span class="n">{d.getDate()}</span>
@@ -129,6 +142,19 @@
     border: 1px solid var(--border);
     border-radius: 0.5rem;
     padding: 0.05rem 0.35rem;
+  }
+  .clear {
+    font-size: 0.6rem;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    border: none;
+    border-radius: 0.5rem;
+    padding: 0.1rem 0.4rem;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .clear:hover {
+    background: color-mix(in srgb, var(--accent) 24%, transparent);
   }
   .nav {
     margin-left: auto;

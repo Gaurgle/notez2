@@ -201,15 +201,28 @@ todoz preview pane, so this is moving from idea to in-progress):
   the CLI untouched. This is the gating decision.
 - [ ] Parse / serialize `@date` tokens in notez-core's todo model; expose
   `due` / `event` fields on the task DTO.
-- [ ] Grow `Calendar.svelte` into a real mini-calendar in the todoz preview
-  pane: set / clear a date on the selected todo, highlight dated todos.
+- [x] `Calendar.svelte` is now reusable/context-driven (`marked` days, parent
+  `selected` set, `onPick`, `onClear`, `label`) so each view drives it.
+- [x] Toggleable calendar pane in **todoz** and **notes** (footer indicator +
+  `c` key; resizable). Dashboard keeps its own inline month widget.
+- [x] Notes: real days-with-notes are lit (from mtimes); **multi-day selection
+  filters the list**, with a clear button.
+- [ ] Tickets: calendar pane once tickets carry due dates / milestones.
+- [ ] **Draggable start/end date range** in the calendar (drag to select a span,
+  not just click individual days).
+- [ ] The real date model: `@date` for todos, frontmatter/mtime for notes, so
+  selections round-trip through the CLI. Calendar is navigation-only until then.
 - [ ] A fuller calendar view aggregating dated todos across sections and scopes.
-- [ ] Make the calendar a **toggleable pane on every screen** (notes, todoz,
-  tickets, dashboard) — same pattern as the preview/inspector toggles: a footer
-  indicator + keybind, so it can be shown/hidden per view.
-- [ ] Extend the same to notes (deadline / event via frontmatter or an inline
-  token).
 - [ ] Date-based sorting and filtering; interplay with `#blocked` / `#longterm`.
+
+### Weather (done) + GitHub activity (after auth)
+
+- [x] Dashboard weather is **live** via Open-Meteo (no API key), location from
+  browser geolocation → IP lookup → Stockholm default, with animated
+  sun/cloud/rain/snow/fog/storm scenes, humidity, and wind. Falls back to mock
+  if offline.
+- [ ] Wire the dashboard **git-activity heatmap to real commit data** — defer
+  until GitHub auth (device flow) is done; no point before identity exists.
 
 Captured here so it isn't lost.
 
