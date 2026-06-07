@@ -7,7 +7,7 @@
   import Inspector from "$lib/components/Inspector.svelte";
   import MachineAvatar from "$lib/components/MachineAvatar.svelte";
   import Resizer from "$lib/components/Resizer.svelte";
-  import { Eye, PanelRight, Plus, HelpCircle } from "lucide-svelte";
+  import { Eye, PanelRight, Plus, HelpCircle, CalendarDays } from "lucide-svelte";
   import { mockAuthor, mockAgo, mockProjectAuthors } from "$lib/mock";
   import { projectStats, countBy } from "$lib/stats.svelte";
   import {
@@ -43,6 +43,13 @@
   const previewToggle = new Toggle({
     value: () => showPreview,
     onValueChange: (v) => (showPreview = v),
+  });
+
+  let showCalendar = $state(true);
+  let calendarWidth = $state(260);
+  const calendarToggle = new Toggle({
+    value: () => showCalendar,
+    onValueChange: (v) => (showCalendar = v),
   });
 
   // Vim preference is shared app-wide (same localStorage key as notes); the
@@ -433,6 +440,14 @@
       showInspector = !showInspector;
       return;
     }
+    if (e.key === "p" && !showHelp && confirmDeleteId === null && !categoryMode) {
+      showPreview = !showPreview;
+      return;
+    }
+    if (e.key === "c" && !showHelp && confirmDeleteId === null && !categoryMode) {
+      showCalendar = !showCalendar;
+      return;
+    }
 
     // Modal states intercept everything.
     if (showHelp) {
@@ -543,6 +558,7 @@
     ["v", "collapse / expand all"],
     ["f", "focus this section"],
     ["N", "new category"],
+    ["p / c / i", "toggle preview / calendar / inspector"],
     ["/", "filter"],
     ["tab", "switch notes / todos"],
     ["esc", "clear filter / focus / dialog"],
@@ -682,6 +698,12 @@
         <Resizer get={() => previewWidth} set={(n) => (previewWidth = n)} dir={-1} min={280} max={760} />
         <div class="preview-col" style="width:{previewWidth}px">
           <TodoPreview task={previewTask} subtasks={previewSubtasks} />
+        </div>
+      {/if}
+
+      {#if showCalendar}
+        <Resizer get={() => calendarWidth} set={(n) => (calendarWidth = n)} dir={-1} min={220} max={420} />
+        <div class="calendar-col" style="width:{calendarWidth}px">
           <Calendar />
         </div>
       {/if}
@@ -712,6 +734,9 @@
       <div class="pane-toggles">
         <button class="pane-toggle" class:on={previewToggle.value} {...previewToggle.trigger} title="Preview (p)" aria-label="Toggle preview">
           <Eye size={14} />
+        </button>
+        <button class="pane-toggle" class:on={calendarToggle.value} {...calendarToggle.trigger} title="Calendar (c)" aria-label="Toggle calendar">
+          <CalendarDays size={14} />
         </button>
         <button class="pane-toggle" class:on={inspectorToggle.value} {...inspectorToggle.trigger} title="Inspector (i)" aria-label="Toggle inspector">
           <PanelRight size={14} />
@@ -896,6 +921,14 @@
     display: flex;
     flex-direction: column;
     border-left: 1px solid var(--border);
+  }
+  .calendar-col {
+    flex-shrink: 0;
+    min-width: 0;
+    overflow-y: auto;
+    border-left: 1px solid var(--border);
+    background: var(--mantle);
+    padding: 0.75rem;
   }
   .status {
     padding: 1rem;
