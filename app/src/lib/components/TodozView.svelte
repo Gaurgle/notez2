@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
   import { Toggle } from "melt/builders";
   import TodoItem from "$lib/components/todo/TodoItem.svelte";
   import TodoPreview from "$lib/components/todo/TodoPreview.svelte";
@@ -7,7 +8,7 @@
   import Inspector from "$lib/components/Inspector.svelte";
   import MachineAvatar from "$lib/components/MachineAvatar.svelte";
   import Resizer from "$lib/components/Resizer.svelte";
-  import { Eye, PanelRight, Plus, HelpCircle, CalendarDays } from "lucide-svelte";
+  import { Eye, PanelRight, Plus, HelpCircle, CalendarDays, RefreshCw } from "lucide-svelte";
   import { mockAuthor, mockAgo, mockProjectAuthors } from "$lib/mock";
   import { projectStats, countBy } from "$lib/stats.svelte";
   import {
@@ -103,10 +104,37 @@
   let hoveredId = $state<number | null>(null);
   const onHover = (id: number | null) => (hoveredId = id);
 
+  let syncing = $state(false);
+
   onMount(async () => {
     await reload();
     loading = false;
   });
+
+  // Auto-sync from disk when the window regains focus — covers TODO.md edits
+  // made by the CLI/TUI (notez/todoz) while the desktop app was in the back.
+  // WKWebView's window `focus` event is unreliable on app-switch, so use
+  // Tauri's native window focus event (with the DOM event as a fallback).
+  $effect(() => {
+    const onFocus = () => reload();
+    window.addEventListener("focus", onFocus);
+    let unlisten: (() => void) | undefined;
+    getCurrentWindow()
+      .onFocusChanged(({ payload: focused }) => {
+        if (focused) reload();
+      })
+      .then((fn) => (unlisten = fn));
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      unlisten?.();
+    };
+  });
+
+  async function sync() {
+    syncing = true;
+    await reload();
+    syncing = false;
+  }
 
   async function reload() {
     try {
@@ -627,6 +655,15 @@
       </span>
       <span class="counts">{pending} pending · {done} done</span>
       <div class="spacer"></div>
+      <button
+        class="ghost iconbtn icononly"
+        onclick={sync}
+        disabled={syncing}
+        title="Sync from disk (auto on window focus)"
+        aria-label="Sync from disk"
+      >
+        <span class="ico" class:spin={syncing}><RefreshCw size={15} /></span>
+      </button>
       <button class="ghost iconbtn icononly" onclick={toolbarNew} title="New todo" aria-label="New todo">
         <Plus size={16} />
       </button>

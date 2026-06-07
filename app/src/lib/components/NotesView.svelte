@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
   import { SvelteSet } from "svelte/reactivity";
   import Sidebar from "$lib/components/Sidebar.svelte";
   import NoteList from "$lib/components/NoteList.svelte";
@@ -251,6 +252,23 @@
       loading = false;
     });
     loadProjects(); // parallel, non-blocking
+  });
+
+  // Re-read notes from disk when the window regains focus, so changes made by
+  // the CLI (notez add/log/edit) show up without a manual refresh.
+  $effect(() => {
+    const onFocus = () => refresh(selectedPath ?? undefined);
+    window.addEventListener("focus", onFocus);
+    let unlisten: (() => void) | undefined;
+    getCurrentWindow()
+      .onFocusChanged(({ payload: focused }) => {
+        if (focused) refresh(selectedPath ?? undefined);
+      })
+      .then((fn) => (unlisten = fn));
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      unlisten?.();
+    };
   });
 
   async function loadProjects() {

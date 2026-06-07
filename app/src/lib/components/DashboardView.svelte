@@ -1,6 +1,9 @@
 <script lang="ts">
-  // Mock "home" dashboard. The clock, the calendar month, and the weather
-  // (Open-Meteo) are real; the rest is mock.
+  // Mock "home" dashboard on a draggable/resizable Gridstack board.
+  // The clock, the calendar month, and the weather (Open-Meteo) are real.
+  import { onMount, onDestroy } from "svelte";
+  import { GridStack } from "gridstack";
+  import "gridstack/dist/gridstack.min.css";
   import Avatar from "$lib/components/Avatar.svelte";
   import WeatherWidget from "$lib/components/WeatherWidget.svelte";
   import { hashStr } from "$lib/mock";
@@ -15,6 +18,7 @@
     KanbanSquare,
     CalendarDays,
     Flame,
+    RotateCcw,
   } from "lucide-svelte";
 
   let { active = true }: { active?: boolean } = $props();
@@ -99,7 +103,6 @@
     { title: "All-hands Friday 15:00", time: "2d", tag: "team" },
   ];
 
-  // git-log style commit feed (repoz-in-the-dashboard).
   const COMMITS = [
     { hash: "a3f9c2e", msg: "fix(core): stop personal notes duplicating into global scope", repo: "notez2", by: "you", time: "2h" },
     { hash: "6f68822", msg: "feat(app): unify toolbars, footer indicators, + button", repo: "notez2", by: "alex", time: "5h" },
@@ -121,7 +124,6 @@
     { hash: "c13f6d8", msg: "docs: README + scope model", repo: "notez2", by: "nora", time: "1w" },
   ];
 
-  // Group commits by project, projects ordered by their most recent commit.
   type Commit = (typeof COMMITS)[number];
   const COMMIT_GROUPS: { repo: string; commits: Commit[] }[] = (() => {
     const order: string[] = [];
@@ -135,6 +137,75 @@
     }
     return order.map((repo) => ({ repo, commits: map[repo] }));
   })();
+
+  // --- Gridstack ---------------------------------------------------------
+  // Spread the gs-* layout attributes via a helper (keeps them off the typed
+  // element props so svelte-check doesn't reject the custom attributes).
+  function gs(o: {
+    id: string;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    minW?: number;
+    minH?: number;
+    maxH?: number;
+  }): Record<string, string | number> {
+    const a: Record<string, string | number> = {
+      "gs-id": o.id,
+      "gs-x": o.x,
+      "gs-y": o.y,
+      "gs-w": o.w,
+      "gs-h": o.h,
+    };
+    if (o.minW !== undefined) a["gs-min-w"] = o.minW;
+    if (o.minH !== undefined) a["gs-min-h"] = o.minH;
+    if (o.maxH !== undefined) a["gs-max-h"] = o.maxH;
+    return a;
+  }
+
+  const LAYOUT_KEY = "notez-dash-layout-v2";
+  let gridEl: HTMLElement;
+  let gridStack: GridStack | undefined;
+
+  onMount(() => {
+    gridStack = GridStack.init(
+      {
+        column: 12,
+        cellHeight: 76,
+        margin: 11,
+        float: false, // gravity-pack: dragging never leaves holes behind
+        animate: true, // smooth reflow of neighbours
+        draggable: { cancel: ".no-drag" },
+        resizable: { handles: "n, e, s, w, se, sw, ne, nw" },
+        columnOpts: { breakpoints: [{ w: 760, c: 1 }] },
+      },
+      gridEl
+    );
+
+    const saved = localStorage.getItem(LAYOUT_KEY);
+    if (saved) {
+      try {
+        gridStack.load(JSON.parse(saved), false);
+      } catch {
+        /* ignore a corrupt saved layout */
+      }
+    }
+    gridStack.on("change", () => {
+      try {
+        localStorage.setItem(LAYOUT_KEY, JSON.stringify(gridStack?.save(false)));
+      } catch {
+        /* storage may be unavailable */
+      }
+    });
+  });
+
+  onDestroy(() => gridStack?.destroy(false));
+
+  function resetLayout() {
+    localStorage.removeItem(LAYOUT_KEY);
+    location.reload();
+  }
 </script>
 
 <div class="dash">
@@ -145,112 +216,134 @@
         <div class="date">{dateStr}</div>
       </div>
       <div class="clock">{clock}</div>
+      <button class="reset" onclick={resetLayout} title="Reset widget layout" aria-label="Reset layout">
+        <RotateCcw size={14} />
+      </button>
     </header>
 
-    <div class="tiles">
-      {#each STATS as s (s.label)}
-        <section class="card tile">
-          <div class="tile-ico" style="--c:{s.color}"><s.icon size={17} /></div>
-          <div class="tile-text">
-            <div class="tile-num">{s.value}</div>
-            <div class="tile-label">{s.label} · <span class="trend">{s.trend}</span></div>
+    <div class="grid-stack" bind:this={gridEl}>
+      {#each STATS as s, i (s.label)}
+        <div
+          class="grid-stack-item"
+          {...gs({ id: `tile-${s.label}`, x: i * 3, y: 0, w: 3, h: 1, minW: 2, minH: 1, maxH: 2 })}
+        >
+          <div class="grid-stack-item-content card tile">
+            <div class="tile-ico" style="--c:{s.color}"><s.icon size={17} /></div>
+            <div class="tile-text">
+              <div class="tile-num">{s.value}</div>
+              <div class="tile-label">{s.label} · <span class="trend">{s.trend}</span></div>
+            </div>
+            <div class="spark" style="--c:{s.color}">
+              {#each spark(s.label) as h (h)}<span style="height:{h}%"></span>{/each}
+            </div>
           </div>
-          <div class="spark" style="--c:{s.color}">
-            {#each spark(s.label) as h (h)}<span style="height:{h}%"></span>{/each}
-          </div>
-        </section>
+        </div>
       {/each}
-    </div>
 
-    <div class="feature">
-      <section class="card">
-        <div class="card-head"><CalendarDays size={13} /> {monthName}</div>
-        <div class="cal-wd">{#each WD as w, i (i)}<span>{w}</span>{/each}</div>
-        <div class="cal-grid">
-          {#each calCells as c, i (i)}
-            <div class="cal-cell" class:empty={c.day === null} class:today={c.day === todayNum}>
-              {#if c.day}{c.day}{#if c.event}<span class="cal-ev"></span>{/if}{/if}
-            </div>
-          {/each}
-        </div>
-      </section>
-
-      <section class="card">
-        <div class="card-head"><GitCommitHorizontal size={13} /> Git activity</div>
-        <div class="heatmap">
-          {#each grid as week, w (w)}
-            <div class="week">{#each week as lvl, d (d)}<span class="cell lvl{lvl}"></span>{/each}</div>
-          {/each}
-        </div>
-        <div class="git-foot">
-          <span><Flame size={12} /> 7-day streak</span>
-          <span class="legend">Less <span class="cell lvl1"></span><span class="cell lvl2"></span><span class="cell lvl3"></span><span class="cell lvl4"></span> More</span>
-        </div>
-      </section>
-    </div>
-
-    <div class="detail">
-      <section class="card weather-card">
-        <div class="card-head"><CloudSun size={13} /> Weather</div>
-        <WeatherWidget />
-      </section>
-
-      <section class="card">
-        <div class="card-head"><FolderGit2 size={13} /> Repos</div>
-        <ul class="list">
-          {#each REPOS as r (r.name)}
-            <li>
-              <span class="sdot" style="--c:{STATUS_COLOR[r.status]}"></span>
-              <span class="li-name">{r.name}</span>
-              <span class="li-detail">{r.detail}</span>
-            </li>
-          {/each}
-        </ul>
-      </section>
-
-      <section class="card">
-        <div class="card-head"><Megaphone size={13} /> Company news</div>
-        <ul class="list">
-          {#each NEWS as n (n.title)}
-            <li class="news">
-              <span class="news-tag">{n.tag}</span>
-              <span class="li-name">{n.title}</span>
-              <span class="li-detail">{n.time}</span>
-            </li>
-          {/each}
-        </ul>
-      </section>
-
-      <section class="card team-card">
-        <div class="card-head"><Users size={13} /> Team</div>
-        <div class="team">
-          {#each TEAM as m (m.name)}
-            <span class="av" class:online={m.online} title={m.name}><Avatar name={m.name} size={26} /></span>
-          {/each}
-        </div>
-      </section>
-    </div>
-
-    <section class="card feed">
-      <div class="card-head"><GitCommitHorizontal size={13} /> Recent commits</div>
-      <div class="commits">
-        {#each COMMIT_GROUPS as g (g.repo)}
-          <div class="proj-head">
-            <span class="proj-dot" style="--c:{REPO_COLOR[g.repo] ?? 'var(--subtext)'}"></span>
-            <span class="proj-name">{g.repo}</span>
-            <span class="proj-count">{g.commits.length}</span>
+      <div class="grid-stack-item" {...gs({ id: "calendar", x: 0, y: 1, w: 4, h: 3, minW: 3, minH: 3 })}>
+        <div class="grid-stack-item-content card">
+          <div class="card-head"><CalendarDays size={13} /> {monthName}</div>
+          <div class="cal-wd">{#each WD as w, i (i)}<span>{w}</span>{/each}</div>
+          <div class="cal-grid">
+            {#each calCells as c, i (i)}
+              <div class="cal-cell" class:empty={c.day === null} class:today={c.day === todayNum}>
+                {#if c.day}{c.day}{#if c.event}<span class="cal-ev"></span>{/if}{/if}
+              </div>
+            {/each}
           </div>
-          {#each g.commits as c (c.hash)}
-            <div class="commit">
-              <span class="hash">{c.hash}</span>
-              <span class="cmsg">{c.msg}</span>
-              <Avatar name={c.by} size={14} />
-              <span class="ctime">{c.time}</span>
-            </div>
-          {/each}
-        {/each}
+        </div>
       </div>
-    </section>
+
+      <div class="grid-stack-item" {...gs({ id: "git", x: 4, y: 1, w: 4, h: 3, minW: 3, minH: 2 })}>
+        <div class="grid-stack-item-content card">
+          <div class="card-head"><GitCommitHorizontal size={13} /> Git activity</div>
+          <div class="heatmap">
+            {#each grid as week, w (w)}
+              <div class="week">{#each week as lvl, d (d)}<span class="cell lvl{lvl}"></span>{/each}</div>
+            {/each}
+          </div>
+          <div class="git-foot">
+            <span><Flame size={12} /> 7-day streak</span>
+            <span class="legend">Less <span class="cell lvl1"></span><span class="cell lvl2"></span><span class="cell lvl3"></span><span class="cell lvl4"></span> More</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-stack-item" {...gs({ id: "weather", x: 8, y: 1, w: 4, h: 3, minW: 3, minH: 2 })}>
+        <div class="grid-stack-item-content card weather-card">
+          <div class="card-head"><CloudSun size={13} /> Weather</div>
+          <WeatherWidget />
+        </div>
+      </div>
+
+      <div class="grid-stack-item" {...gs({ id: "repos", x: 0, y: 4, w: 4, h: 3, minW: 2, minH: 2 })}>
+        <div class="grid-stack-item-content card">
+          <div class="card-head"><FolderGit2 size={13} /> Repos</div>
+          <ul class="list">
+            {#each REPOS as r (r.name)}
+              <li>
+                <span class="sdot" style="--c:{STATUS_COLOR[r.status]}"></span>
+                <span class="li-name">{r.name}</span>
+                <span class="li-detail">{r.detail}</span>
+              </li>
+            {/each}
+          </ul>
+        </div>
+      </div>
+
+      <div class="grid-stack-item" {...gs({ id: "news", x: 4, y: 4, w: 4, h: 3, minW: 2, minH: 2 })}>
+        <div class="grid-stack-item-content card">
+          <div class="card-head"><Megaphone size={13} /> Company news</div>
+          <ul class="list">
+            {#each NEWS as n (n.title)}
+              <li class="news">
+                <span class="news-tag">{n.tag}</span>
+                <span class="li-name">{n.title}</span>
+                <span class="li-detail">{n.time}</span>
+              </li>
+            {/each}
+          </ul>
+        </div>
+      </div>
+
+      <div class="grid-stack-item" {...gs({ id: "team", x: 8, y: 4, w: 4, h: 3, minW: 2, minH: 2 })}>
+        <div class="grid-stack-item-content card">
+          <div class="card-head"><Users size={13} /> Team</div>
+          <div class="team">
+            {#each TEAM as m (m.name)}
+              <span class="av" class:online={m.online} title={m.name}><Avatar name={m.name} size={26} /></span>
+            {/each}
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-stack-item" {...gs({ id: "commits", x: 0, y: 7, w: 12, h: 5, minW: 4, minH: 3 })}>
+        <div class="grid-stack-item-content card">
+          <div class="card-head"><GitCommitHorizontal size={13} /> Recent commits</div>
+          <div class="commit-cols">
+            {#each COMMIT_GROUPS as g (g.repo)}
+              <div class="commit-col">
+                <div class="proj-head">
+                  <span class="proj-dot" style="--c:{REPO_COLOR[g.repo] ?? 'var(--subtext)'}"></span>
+                  <span class="proj-name">{g.repo}</span>
+                  <span class="proj-count">{g.commits.length}</span>
+                </div>
+                {#each g.commits as c (c.hash)}
+                  <div class="commit">
+                    <div class="cmsg">{c.msg}</div>
+                    <div class="cmeta">
+                      <span class="hash">{c.hash}</span>
+                      <Avatar name={c.by} size={13} />
+                      <span class="ctime">{c.time}</span>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            {/each}
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -260,17 +353,11 @@
     overflow-y: auto;
     background: var(--base);
     padding: 1rem;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
   }
   .inner {
     width: 100%;
     max-width: 1320px;
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 0.7rem;
+    margin: 0 auto;
   }
 
   .hero {
@@ -278,6 +365,7 @@
     align-items: center;
     gap: 1.25rem;
     padding: 0.7rem 1.1rem;
+    margin-bottom: 0; /* the grid's own top margin is the only gap */
     border: 1px solid var(--border);
     border-radius: 0.7rem;
     background:
@@ -302,16 +390,65 @@
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.01em;
   }
-  .weather-card {
-    display: flex;
-    flex-direction: column;
+  .reset {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 0.5rem;
+    border: 1px solid var(--border);
+    background: var(--glass-hover);
+    color: var(--faint);
+    cursor: pointer;
+  }
+  .reset:hover {
+    background: var(--glass-active);
+    color: var(--text);
   }
 
-  .card {
+  /* Gridstack item = a card. The whole card is the drag handle (content is
+     non-interactive), so kill text selection and show a grab cursor. */
+  .grid-stack-item-content.card {
+    inset: 0;
     background: var(--mantle);
     border: 1px solid var(--border);
-    border-radius: 0.6rem;
-    padding: 0.8rem;
+    border-radius: 0.75rem;
+    padding: 0.7rem;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    /* normal pointer in the body — only becomes "grabbing" once you drag, and
+       the edges/corners show their own move/resize cursors on hover. */
+    cursor: default;
+    user-select: none;
+    -webkit-user-select: none;
+    /* slight depth — a soft drop shadow + faint top highlight */
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.03) inset,
+      0 4px 14px rgba(0, 0, 0, 0.28);
+    transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+  }
+  .grid-stack-item-content.card:hover {
+    border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.05) inset,
+      0 6px 20px rgba(0, 0, 0, 0.36);
+  }
+  /* Smooth move/resize animation for every item. */
+  :global(.grid-stack-item) {
+    transition: transform 0.18s cubic-bezier(0.22, 0.61, 0.36, 1),
+      width 0.18s cubic-bezier(0.22, 0.61, 0.36, 1),
+      height 0.18s cubic-bezier(0.22, 0.61, 0.36, 1);
+  }
+  :global(.grid-stack-item.ui-draggable-dragging),
+  :global(.grid-stack-item.ui-resizable-resizing) {
+    transition: none;
+    z-index: 100;
+  }
+  :global(.grid-stack-item.ui-draggable-dragging .card) {
+    cursor: grabbing;
+    border-color: var(--accent);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
   }
   .card-head {
     display: flex;
@@ -322,20 +459,93 @@
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--subtext);
-    margin-bottom: 0.65rem;
+    margin-bottom: 0.6rem;
+    flex-shrink: 0;
   }
 
-  /* Tiles */
-  .tiles {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 0.7rem;
+  /* Resize handles — thin, rounded, sleek; fade in ~0.3s after hover. */
+  :global(.grid-stack-item > .ui-resizable-handle) {
+    opacity: 0;
+    background-image: none;
+    transition: opacity 0.18s ease; /* quick fade-out */
   }
-  .tile {
-    display: flex;
+  :global(.grid-stack-item:hover > .ui-resizable-handle) {
+    opacity: 1;
+    transition: opacity 0.22s ease 0.3s; /* delayed fade-in */
+  }
+  /* corner grips: tiny rounded dots (all four corners) */
+  :global(.grid-stack-item > .ui-resizable-se),
+  :global(.grid-stack-item > .ui-resizable-sw),
+  :global(.grid-stack-item > .ui-resizable-ne),
+  :global(.grid-stack-item > .ui-resizable-nw) {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 2.5px var(--mantle);
+  }
+  :global(.grid-stack-item > .ui-resizable-se) {
+    right: 5px;
+    bottom: 5px;
+  }
+  :global(.grid-stack-item > .ui-resizable-sw) {
+    left: 5px;
+    bottom: 5px;
+  }
+  :global(.grid-stack-item > .ui-resizable-ne) {
+    right: 5px;
+    top: 5px;
+  }
+  :global(.grid-stack-item > .ui-resizable-nw) {
+    left: 5px;
+    top: 5px;
+  }
+  /* edge grips: thin rounded pills */
+  :global(.grid-stack-item > .ui-resizable-e),
+  :global(.grid-stack-item > .ui-resizable-w) {
+    width: 3px;
+    height: 24px;
+    top: 50%;
+    margin-top: -12px;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--accent) 65%, transparent);
+  }
+  :global(.grid-stack-item > .ui-resizable-e) {
+    right: 3px;
+  }
+  :global(.grid-stack-item > .ui-resizable-w) {
+    left: 3px;
+  }
+  :global(.grid-stack-item > .ui-resizable-s),
+  :global(.grid-stack-item > .ui-resizable-n) {
+    width: 24px;
+    height: 3px;
+    left: 50%;
+    margin-left: -12px;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--accent) 65%, transparent);
+  }
+  :global(.grid-stack-item > .ui-resizable-s) {
+    bottom: 3px;
+  }
+  :global(.grid-stack-item > .ui-resizable-n) {
+    top: 3px;
+  }
+  /* drag placeholder: a soft rounded ghost where the widget will land */
+  :global(.grid-stack > .grid-stack-placeholder > .placeholder-content) {
+    border: 1.5px dashed color-mix(in srgb, var(--accent) 55%, transparent);
+    border-radius: 0.7rem;
+    background: color-mix(in srgb, var(--accent) 9%, transparent);
+    margin: 0;
+  }
+
+  /* Tiles — higher specificity than .grid-stack-item-content.card so the
+     row layout wins (otherwise the column default clips the number). */
+  .grid-stack-item-content.card.tile {
+    flex-direction: row;
     align-items: center;
     gap: 0.7rem;
-    padding: 0.75rem 0.85rem;
+    padding: 0.7rem 0.85rem;
   }
   .tile-ico {
     display: grid;
@@ -380,32 +590,6 @@
     background: color-mix(in srgb, var(--c) 55%, transparent);
   }
 
-  /* Feature + detail rows */
-  .feature {
-    display: grid;
-    grid-template-columns: 1.15fr 1fr;
-    gap: 0.7rem;
-    align-items: stretch;
-  }
-  .detail {
-    display: grid;
-    grid-template-columns: 1.4fr 1fr 1.3fr 0.9fr;
-    gap: 0.7rem;
-    align-items: stretch;
-  }
-  .feed {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-  }
-  @media (max-width: 900px) {
-    .feature,
-    .detail,
-    .tiles {
-      grid-template-columns: 1fr 1fr;
-    }
-  }
-
   /* Calendar */
   .cal-wd,
   .cal-grid {
@@ -423,7 +607,7 @@
     text-transform: uppercase;
   }
   .cal-cell {
-    height: 30px;
+    min-height: 26px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -431,9 +615,6 @@
     font-size: 0.74rem;
     color: var(--subtext);
     position: relative;
-  }
-  .cal-cell:not(.empty):hover {
-    background: var(--surface);
   }
   .cal-cell.today {
     background: var(--accent);
@@ -450,9 +631,6 @@
     height: 4px;
     border-radius: 50%;
     background: var(--accent-public);
-  }
-  .cal-cell.today .cal-ev {
-    background: var(--base);
   }
 
   /* Heatmap */
@@ -510,6 +688,7 @@
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
+    overflow-y: auto;
   }
   .list li {
     display: flex;
@@ -553,6 +732,7 @@
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
+    overflow-y: auto;
   }
   .av {
     position: relative;
@@ -569,25 +749,34 @@
     background: var(--accent-public);
     border: 2px solid var(--mantle);
   }
+  .weather-card {
+    padding: 0.7rem;
+  }
 
-  /* Recent feed (fills remaining height) */
-  .commits {
+  /* Commit feed — projects side by side as columns. */
+  .commit-cols {
     flex: 1;
     overflow-y: auto;
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 0.4rem 1.5rem;
+    align-content: start;
+  }
+  .commit-col {
+    min-width: 0;
   }
   .proj-head {
     display: flex;
     align-items: center;
     gap: 0.4rem;
-    margin-top: 0.55rem;
-    padding: 0.1rem 0.25rem;
+    padding: 0.1rem 0 0.4rem;
+    margin-bottom: 0.25rem;
+    border-bottom: 1px solid var(--border);
     font-size: 0.74rem;
     font-weight: 700;
-  }
-  .proj-head:first-child {
-    margin-top: 0;
+    position: sticky;
+    top: 0;
+    background: var(--mantle);
   }
   .proj-dot {
     width: 7px;
@@ -609,32 +798,32 @@
     border-radius: 0.5rem;
   }
   .commit {
+    padding: 0.32rem 0.1rem;
+  }
+  .cmsg {
+    font-size: 0.78rem;
+    line-height: 1.35;
+    color: var(--text);
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  /* hash · author · time — the metadata, grouped on one line */
+  .cmeta {
     display: flex;
     align-items: center;
-    gap: 0.6rem;
-    padding: 0.26rem 0.25rem 0.26rem 1.4rem;
-    font-size: 0.8rem;
+    gap: 0.45rem;
+    margin-top: 0.2rem;
+    font-size: 0.66rem;
+    color: var(--faint);
   }
   .hash {
     font-family: ui-monospace, "SF Mono", "JetBrains Mono", monospace;
-    font-size: 0.72rem;
     color: var(--faint);
-    flex-shrink: 0;
-    width: 4.3rem;
-  }
-  .cmsg {
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--subtext);
   }
   .ctime {
-    font-size: 0.66rem;
-    color: var(--faint);
-    width: 2.4rem;
-    text-align: right;
-    flex-shrink: 0;
     font-variant-numeric: tabular-nums;
   }
 </style>

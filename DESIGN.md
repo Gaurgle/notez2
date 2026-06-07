@@ -224,6 +224,23 @@ todoz preview pane, so this is moving from idea to in-progress):
 - [ ] Wire the dashboard **git-activity heatmap to real commit data** — defer
   until GitHub auth (device flow) is done; no point before identity exists.
 
+### Desktop dashboard + sync — open feedback (next)
+
+- [ ] **CLI → desktop sync still not live.** Editing a todo's status in the
+  CLI/TUI doesn't update the desktop board. `onFocusChanged` isn't firing
+  reliably — switch to **polling while focused** (`document.hasFocus()`, ~3s,
+  guarded against active edits) or proper **fs-watch in the backend** (notify →
+  emit event). Backend `load_todo_board` already re-reads disk, so it's purely a
+  trigger problem.
+- [ ] **Ticketz: drag cards between columns** (Backlog / In progress / Review /
+  Done) — kanban drag-and-drop.
+- [ ] **Widget resize handles still too thick** — make thinner again.
+- [ ] **Recent-commits widget**: keep refining the look (columns landed; tune
+  density, message clamping, spacing).
+- [ ] **Avatars in recent commits**: make bigger; the hover-name reveal should
+  be **faster** than the native `title` delay (custom tooltip, mind overflow
+  clipping inside cards).
+
 Captured here so it isn't lost.
 
 ### Scope migration (move notes/todos between scopes)
