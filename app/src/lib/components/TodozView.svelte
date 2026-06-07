@@ -130,6 +130,20 @@
     };
   });
 
+  // Reliable backstop: while the Todos tab is open, poll the board from disk
+  // every few seconds so CLI/TUI edits show up live even when the desktop window
+  // isn't focused (e.g. editing in a terminal next to the app). Collapse state
+  // survives the reload (see preserve_collapsed in the backend); skipped during
+  // edits/dialogs so it never disrupts what you're doing.
+  $effect(() => {
+    if (!active) return;
+    const id = setInterval(() => {
+      if (editingId !== null || categoryMode || confirmDeleteId !== null || showHelp) return;
+      reload();
+    }, 3000);
+    return () => clearInterval(id);
+  });
+
   async function sync() {
     syncing = true;
     await reload();

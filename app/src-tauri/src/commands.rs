@@ -255,14 +255,39 @@ fn persisted(guard: &[Task]) -> Result<TodoBoard, String> {
 }
 
 /// Load the global todoz board (all scopes) into managed state.
+///
+/// Collapse is view-only and rebuilt fresh from disk on every load, so we carry
+/// the user's expand/collapse choices across the reload — otherwise a live sync
+/// (CLI edit → reload) would fold the whole tree back up under the user.
 #[tauri::command]
 pub fn load_todo_board(state: tauri::State<BoardState>) -> Result<TodoBoard, String> {
     let config = Config::load().map_err(err)?;
     let registry = ProjectRegistry::load().map_err(err)?;
-    let board = todo::load_board(&config, &registry);
+    let mut board = todo::load_board(&config, &registry);
     let mut guard = lock(&state)?;
+    preserve_collapsed(&guard, &mut board);
     *guard = board;
     Ok(TodoBoard::from_tasks(&guard))
+}
+
+/// Re-apply the previous collapse state to a freshly-loaded board, matching
+/// headers/parents by a stable identity (source + section + depth + text).
+fn preserve_collapsed(prev: &[Task], next: &mut [Task]) {
+    type Key = (std::path::PathBuf, String, u8, String);
+    let key = |t: &Task| -> Key { (t.source.clone(), t.section.clone(), t.depth, t.text.clone()) };
+    let map: std::collections::HashMap<Key, bool> = prev
+        .iter()
+        .filter(|t| t.is_header || t.has_subtasks)
+        .map(|t| (key(t), t.collapsed))
+        .collect();
+    if map.is_empty() {
+        return;
+    }
+    for t in next.iter_mut() {
+        if let Some(&collapsed) = map.get(&key(t)) {
+            t.collapsed = collapsed;
+        }
+    }
 }
 
 /// Load the single-scope todoz board into managed state.
