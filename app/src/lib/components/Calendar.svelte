@@ -1,14 +1,24 @@
 <script lang="ts">
   import { onMount } from "svelte";
 
-  // NOTE: presentational placeholder. Month navigation + today highlight work,
-  // but days are not yet wired to todo deadlines/events — that needs the
-  // `@date` storage decision (see DESIGN.md → Calendar / deadlines).
+  // Reusable month calendar. Each view supplies its own context:
+  //   marked  — ISO "YYYY-MM-DD" dates to flag with an event dot
+  //   onPick  — called when a day is clicked (e.g. filter notes by that day)
+  //   label   — small badge text (e.g. "mock"); hidden when empty
+  // With no `marked`, it falls back to a decorative mock so todoz stays alive.
+  let {
+    marked,
+    onPick,
+    label = "",
+  }: {
+    marked?: Set<string>;
+    onPick?: (iso: string, date: Date) => void;
+    label?: string;
+  } = $props();
 
-  // Initialised in onMount so the date is resolved at runtime, not build time.
   let ref = $state<Date | null>(null); // first day of the viewed month
   let today = $state<Date | null>(null);
-  let selected = $state<string | null>(null); // "yyyy-m-d"
+  let selected = $state<string | null>(null);
 
   onMount(() => {
     const now = new Date();
@@ -17,19 +27,16 @@
   });
 
   const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+  const MOCK = new Set([4, 11, 12, 19, 26]); // decorative fallback (current month)
 
-  // Placeholder "events" so the mock looks alive — purely decorative.
-  const MOCK = new Set([4, 11, 12, 19, 26]);
-
-  function key(d: Date): string {
-    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  function iso(d: Date): string {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   }
 
   const monthLabel = $derived(
     ref ? ref.toLocaleString(undefined, { month: "long", year: "numeric" }) : ""
   );
 
-  // Grid of cells for the viewed month (Monday-first), padded with nulls.
   const cells = $derived.by(() => {
     if (!ref) return [] as (Date | null)[];
     const y = ref.getFullYear();
@@ -44,9 +51,17 @@
   });
 
   function isToday(d: Date): boolean {
-    return !!today && key(d) === key(today);
+    return !!today && iso(d) === iso(today);
   }
-
+  function hasEvent(d: Date): boolean {
+    if (marked) return marked.has(iso(d));
+    return !!today && d.getMonth() === today.getMonth() && MOCK.has(d.getDate());
+  }
+  function pick(d: Date) {
+    const k = iso(d);
+    selected = selected === k ? null : k;
+    onPick?.(k, d);
+  }
   function step(delta: number) {
     if (!ref) return;
     ref = new Date(ref.getFullYear(), ref.getMonth() + delta, 1);
@@ -56,7 +71,7 @@
 <div class="cal">
   <div class="cal-head">
     <span class="title">{monthLabel}</span>
-    <span class="placeholder">mock</span>
+    {#if label}<span class="placeholder">{label}</span>{/if}
     <div class="nav">
       <button aria-label="previous month" onclick={() => step(-1)}>‹</button>
       <button aria-label="next month" onclick={() => step(1)}>›</button>
@@ -75,11 +90,11 @@
         <button
           class="day"
           class:today={isToday(d)}
-          class:selected={selected === key(d)}
-          onclick={() => (selected = key(d))}
+          class:selected={selected === iso(d)}
+          onclick={() => pick(d)}
         >
           <span class="n">{d.getDate()}</span>
-          {#if MOCK.has(d.getDate())}<span class="ev"></span>{/if}
+          {#if hasEvent(d)}<span class="ev"></span>{/if}
         </button>
       {:else}
         <span class="day empty"></span>

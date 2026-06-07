@@ -9,11 +9,13 @@
   import MigrationDialog from "$lib/components/MigrationDialog.svelte";
   import Inspector from "$lib/components/Inspector.svelte";
   import MarkdownPreview from "$lib/components/MarkdownPreview.svelte";
+  import Calendar from "$lib/components/Calendar.svelte";
   import Resizer from "$lib/components/Resizer.svelte";
   import { Toaster, Toggle } from "melt/builders";
   import {
     Eye,
     PanelRight,
+    CalendarDays,
     Plus,
     ScrollText,
     RefreshCw,
@@ -71,10 +73,13 @@
   // Preview + inspector both open by default.
   let showPreview = $state(true);
   let showInspector = $state(true);
+  let showCalendar = $state(false);
   let sidebarWidth = $state(190);
   let listWidth = $state(280);
   let previewWidth = $state(440);
   let inspectorWidth = $state(210);
+  let calendarWidth = $state(250);
+  let dayFilter = $state<string | null>(null); // ISO date the calendar filtered to
 
   let vimMode = $state(
     typeof localStorage !== "undefined" && localStorage.getItem("notez.vim") === "1"
@@ -188,9 +193,18 @@
   // Ctrl+; keyboard shortcuts and the switches stay in sync.
   const previewToggle = new Toggle({ value: () => showPreview, onValueChange: (v) => (showPreview = v) });
   const inspectorToggle = new Toggle({ value: () => showInspector, onValueChange: (v) => (showInspector = v) });
+  const calendarToggle = new Toggle({ value: () => showCalendar, onValueChange: (v) => (showCalendar = v) });
   const vimToggle = new Toggle({ value: () => vimMode, onValueChange: (v) => (vimMode = v) });
 
   let sortMode = $state<"latest" | "oldest" | "name">("latest");
+
+  // ISO day of a note's last-modified time, for the calendar.
+  function noteDay(n: NoteListItem): string {
+    const d = new Date(n.modified * 1000);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+  // Days (in any month) that have at least one note — lit up in the calendar.
+  let notesByDay = $derived(new Set(notes.map(noteDay)));
 
   let filtered = $derived(
     notes
@@ -198,6 +212,7 @@
         (n) =>
           (activeScope === "all" || n.scope === activeScope) &&
           (activeProject === null || n.project === activeProject) &&
+          (dayFilter === null || noteDay(n) === dayFilter) &&
           (searchText.trim() === "" ||
             n.name.toLowerCase().includes(searchText.toLowerCase()))
       )
@@ -380,6 +395,8 @@
         showPreview = !showPreview;
       } else if (e.key === "i") {
         showInspector = !showInspector;
+      } else if (e.key === "c") {
+        showCalendar = !showCalendar;
       }
     }
     window.addEventListener("keydown", onKey);
@@ -505,6 +522,16 @@
         </div>
       {/if}
 
+      {#if showCalendar}
+        <Resizer get={() => calendarWidth} set={(n) => (calendarWidth = n)} dir={-1} min={220} max={400} />
+        <div class="calendar-col" style="width:{calendarWidth}px">
+          <Calendar
+            marked={notesByDay}
+            onPick={(iso) => (dayFilter = dayFilter === iso ? null : iso)}
+          />
+        </div>
+      {/if}
+
       {#if showInspector}
         <Resizer get={() => inspectorWidth} set={(n) => (inspectorWidth = n)} dir={-1} min={180} max={520} />
         <Inspector
@@ -532,6 +559,9 @@
       <div class="pane-toggles">
         <button class="pane-toggle" class:on={previewToggle.value} {...previewToggle.trigger} title="Preview (p)" aria-label="Toggle preview">
           <Eye size={14} />
+        </button>
+        <button class="pane-toggle" class:on={calendarToggle.value} {...calendarToggle.trigger} title="Calendar (c)" aria-label="Toggle calendar">
+          <CalendarDays size={14} />
         </button>
         <button class="pane-toggle" class:on={inspectorToggle.value} {...inspectorToggle.trigger} title="Inspector (i)" aria-label="Toggle inspector">
           <PanelRight size={14} />
@@ -642,6 +672,13 @@
     flex-shrink: 0;
     min-width: 0;
     overflow: hidden;
+  }
+  .calendar-col {
+    flex-shrink: 0;
+    min-width: 0;
+    overflow-y: auto;
+    border-left: 1px solid var(--border);
+    background: var(--mantle);
   }
   .status {
     padding: 1rem;
