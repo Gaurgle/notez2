@@ -333,7 +333,7 @@
                     <div class="cmsg">{c.msg}</div>
                     <div class="cmeta">
                       <span class="hash">{c.hash}</span>
-                      <Avatar name={c.by} size={13} />
+                      <Avatar name={c.by} size={17} />
                       <span class="ctime">{c.time}</span>
                     </div>
                   </div>
@@ -478,11 +478,11 @@
   :global(.grid-stack-item > .ui-resizable-sw),
   :global(.grid-stack-item > .ui-resizable-ne),
   :global(.grid-stack-item > .ui-resizable-nw) {
-    width: 7px;
-    height: 7px;
+    width: 5px;
+    height: 5px;
     border-radius: 50%;
-    background: var(--accent);
-    box-shadow: 0 0 0 2.5px var(--mantle);
+    background: color-mix(in srgb, var(--accent) 85%, transparent);
+    box-shadow: 0 0 0 2px var(--mantle);
   }
   :global(.grid-stack-item > .ui-resizable-se) {
     right: 5px;
@@ -503,12 +503,12 @@
   /* edge grips: thin rounded pills */
   :global(.grid-stack-item > .ui-resizable-e),
   :global(.grid-stack-item > .ui-resizable-w) {
-    width: 3px;
-    height: 24px;
+    width: 2px;
+    height: 22px;
     top: 50%;
-    margin-top: -12px;
-    border-radius: 3px;
-    background: color-mix(in srgb, var(--accent) 65%, transparent);
+    margin-top: -11px;
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--accent) 55%, transparent);
   }
   :global(.grid-stack-item > .ui-resizable-e) {
     right: 3px;
@@ -518,12 +518,12 @@
   }
   :global(.grid-stack-item > .ui-resizable-s),
   :global(.grid-stack-item > .ui-resizable-n) {
-    width: 24px;
-    height: 3px;
+    width: 22px;
+    height: 2px;
     left: 50%;
-    margin-left: -12px;
-    border-radius: 3px;
-    background: color-mix(in srgb, var(--accent) 65%, transparent);
+    margin-left: -11px;
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--accent) 55%, transparent);
   }
   :global(.grid-stack-item > .ui-resizable-s) {
     bottom: 3px;
