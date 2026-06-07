@@ -1,8 +1,20 @@
 <script lang="ts">
+  import DashboardView from "$lib/components/DashboardView.svelte";
   import NotesView from "$lib/components/NotesView.svelte";
   import TodozView from "$lib/components/TodozView.svelte";
+  import TicketzView from "$lib/components/TicketzView.svelte";
+  import SpazeView from "$lib/components/SpazeView.svelte";
+  import {
+    LayoutDashboard,
+    FileText,
+    ListChecks,
+    KanbanSquare,
+    MessagesSquare,
+  } from "lucide-svelte";
 
-  let mode = $state<"notes" | "todoz">("notes");
+  type Mode = "home" | "notes" | "todoz" | "ticketz" | "spaze";
+  const MODES: Mode[] = ["home", "notes", "todoz", "ticketz", "spaze"];
+  let mode = $state<Mode>("home");
 
   function isTyping(target: EventTarget | null): boolean {
     const el = target as HTMLElement | null;
@@ -17,7 +29,8 @@
     function onKey(e: KeyboardEvent) {
       if (e.key === "Tab" && e.ctrlKey && !isTyping(e.target)) {
         e.preventDefault();
-        mode = mode === "notes" ? "todoz" : "notes";
+        const dir = e.shiftKey ? -1 : 1;
+        mode = MODES[(MODES.indexOf(mode) + dir + MODES.length) % MODES.length];
       }
     }
     window.addEventListener("keydown", onKey);
@@ -28,22 +41,40 @@
 <div class="shell">
   <div class="topbar">
     <div class="tabs">
+      <button class="tab" class:active={mode === "home"} onclick={() => (mode = "home")} title="Home">
+        <LayoutDashboard size={15} /><span class="label">Home</span>
+      </button>
       <button class="tab" class:active={mode === "notes"} onclick={() => (mode = "notes")} title="Notes">
-        <span class="glyph">✎</span><span class="label">Notes</span>
+        <FileText size={15} /><span class="label">Notes</span>
       </button>
       <button class="tab" class:active={mode === "todoz"} onclick={() => (mode = "todoz")} title="Todos">
-        <span class="glyph">☑</span><span class="label">Todos</span>
+        <ListChecks size={15} /><span class="label">Todos</span>
+      </button>
+      <button class="tab" class:active={mode === "ticketz"} onclick={() => (mode = "ticketz")} title="Tickets">
+        <KanbanSquare size={15} /><span class="label">Tickets</span>
+      </button>
+      <button class="tab" class:active={mode === "spaze"} onclick={() => (mode = "spaze")} title="Spaze">
+        <MessagesSquare size={15} /><span class="label">Spaze</span>
       </button>
     </div>
   </div>
 
   <main class="content">
-    <!-- Both views stay mounted so switching tabs preserves selection/scroll. -->
+    <!-- Views stay mounted so switching tabs preserves state. -->
+    <div class="view" class:hidden={mode !== "home"}>
+      <DashboardView active={mode === "home"} />
+    </div>
     <div class="view" class:hidden={mode !== "notes"}>
       <NotesView active={mode === "notes"} />
     </div>
     <div class="view" class:hidden={mode !== "todoz"}>
       <TodozView active={mode === "todoz"} />
+    </div>
+    <div class="view" class:hidden={mode !== "ticketz"}>
+      <TicketzView active={mode === "ticketz"} />
+    </div>
+    <div class="view" class:hidden={mode !== "spaze"}>
+      <SpazeView active={mode === "spaze"} />
     </div>
   </main>
 </div>
@@ -93,9 +124,6 @@
     background: var(--glass-active);
     color: var(--accent);
     box-shadow: inset 0 1px 0 var(--highlight), 0 0 14px rgba(203, 166, 247, 0.18);
-  }
-  .glyph {
-    font-size: 0.95rem;
   }
   .content {
     flex: 1;

@@ -204,6 +204,9 @@ todoz preview pane, so this is moving from idea to in-progress):
 - [ ] Grow `Calendar.svelte` into a real mini-calendar in the todoz preview
   pane: set / clear a date on the selected todo, highlight dated todos.
 - [ ] A fuller calendar view aggregating dated todos across sections and scopes.
+- [ ] Make the calendar a **toggleable pane on every screen** (notes, todoz,
+  tickets, dashboard) — same pattern as the preview/inspector toggles: a footer
+  indicator + keybind, so it can be shown/hidden per view.
 - [ ] Extend the same to notes (deadline / event via frontmatter or an inline
   token).
 - [ ] Date-based sorting and filtering; interplay with `#blocked` / `#longterm`.
@@ -310,6 +313,26 @@ Design principle for all of the above: **it must always work and always sync**,
 which means every new artifact is a plain file in the repo with an encoding the
 CLI tools can read and write losslessly. Build the data model first (round-trip
 tests), UI second. Captured here as direction, not committed scope.
+
+**Status:** mock-only desktop views now exist as previews — a **Ticketz**
+kanban board (`TicketzView.svelte`) and a **Spaze** chat view (`SpazeView.svelte`,
+modelled on the `spaze` TUI: rooms sidebar, `<name>` timeline, inline
+`#note`/`#todo` capture). Both render placeholder data; no backend/data model
+yet. The rail is now Notes / Todos / Tickets / Spaze.
+
+### Companion CLI tools to fold in (future)
+
+The same git-backed, GitHub-identity discipline extends to a few sibling CLI
+tools so the whole toolbelt shares one model:
+
+- **`epoz`** — git handling / workflow wrapper.
+- **`repoz`** — a broad repo-status command (scan many repos for dirty trees,
+  unpushed commits, etc.).
+- **a `repoz` "big brother"** — a larger umbrella over `repoz` (the user wrote
+  `epoz` again here; name to confirm — possibly a third distinct tool).
+
+These integrate by surfacing their data through the same desktop shell (e.g. a
+repo-status panel, git actions) rather than reimplementing them.
 
 ## Test scenarios
 
