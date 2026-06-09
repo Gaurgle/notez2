@@ -2,9 +2,11 @@
   // Mock "home" dashboard on a draggable/resizable Gridstack board.
   // The clock, the calendar month, and the weather (Open-Meteo) are real.
   import { onMount, onDestroy } from "svelte";
+  import { SvelteSet } from "svelte/reactivity";
   import { GridStack } from "gridstack";
   import "gridstack/dist/gridstack.min.css";
   import Avatar from "$lib/components/Avatar.svelte";
+  import MachineAvatar from "$lib/components/MachineAvatar.svelte";
   import WeatherWidget from "$lib/components/WeatherWidget.svelte";
   import { hashStr } from "$lib/mock";
   import {
@@ -138,6 +140,31 @@
     return order.map((repo) => ({ repo, commits: map[repo] }));
   })();
 
+  // --- Project visibility (sidebar) --------------------------------------
+  // Which projects are visualized in the dashboard, persisted across sessions.
+  const ALL_PROJECTS = ["notez2", "spaze", "repoz", "epoz"];
+  const PROJ_KEY = "notez-dash-projects-v1";
+  function loadSelectedProjects(): string[] {
+    try {
+      const s = localStorage.getItem(PROJ_KEY);
+      if (s) return JSON.parse(s);
+    } catch {
+      /* ignore */
+    }
+    return [...ALL_PROJECTS];
+  }
+  const selectedProjects = new SvelteSet<string>(loadSelectedProjects());
+  $effect(() => {
+    localStorage.setItem(PROJ_KEY, JSON.stringify([...selectedProjects]));
+  });
+  function toggleProject(p: string) {
+    if (selectedProjects.has(p)) selectedProjects.delete(p);
+    else selectedProjects.add(p);
+  }
+
+  let visibleCommitGroups = $derived(COMMIT_GROUPS.filter((g) => selectedProjects.has(g.repo)));
+  let visibleRepos = $derived(REPOS.filter((r) => selectedProjects.has(r.name)));
+
   // --- Gridstack ---------------------------------------------------------
   // Spread the gs-* layout attributes via a helper (keeps them off the typed
   // element props so svelte-check doesn't reject the custom attributes).
@@ -209,8 +236,25 @@
 </script>
 
 <div class="dash">
-  <div class="inner">
-    <header class="hero">
+  <aside class="sidebar">
+    <div class="brand">
+      <MachineAvatar />
+      <span class="brand-name">home</span>
+    </div>
+    <nav class="group">
+      <div class="group-label">Projects</div>
+      {#each ALL_PROJECTS as p (p)}
+        <button class="item" class:active={selectedProjects.has(p)} onclick={() => toggleProject(p)}>
+          <span class="cbox" class:on={selectedProjects.has(p)}></span>
+          <span class="item-label">{p}</span>
+        </button>
+      {/each}
+    </nav>
+  </aside>
+
+  <div class="main">
+    <div class="inner">
+      <header class="hero">
       <div class="greet">
         <div class="hello">{greeting}, you</div>
         <div class="date">{dateStr}</div>
@@ -280,7 +324,7 @@
         <div class="grid-stack-item-content card">
           <div class="card-head"><FolderGit2 size={13} /> Repos</div>
           <ul class="list">
-            {#each REPOS as r (r.name)}
+            {#each visibleRepos as r (r.name)}
               <li>
                 <span class="sdot" style="--c:{STATUS_COLOR[r.status]}"></span>
                 <span class="li-name">{r.name}</span>
@@ -321,7 +365,7 @@
         <div class="grid-stack-item-content card">
           <div class="card-head"><GitCommitHorizontal size={13} /> Recent commits</div>
           <div class="commit-cols">
-            {#each COMMIT_GROUPS as g (g.repo)}
+            {#each visibleCommitGroups as g (g.repo)}
               <div class="commit-col">
                 <div class="proj-head">
                   <span class="proj-dot" style="--c:{REPO_COLOR[g.repo] ?? 'var(--subtext)'}"></span>
@@ -330,12 +374,12 @@
                 </div>
                 {#each g.commits as c (c.hash)}
                   <div class="commit">
-                    <div class="cmsg">{c.msg}</div>
                     <div class="cmeta">
                       <span class="hash">{c.hash}</span>
-                      <Avatar name={c.by} size={17} />
+                      <Avatar name={c.by} size={18} />
                       <span class="ctime">{c.time}</span>
                     </div>
+                    <div class="cmsg">{c.msg}</div>
                   </div>
                 {/each}
               </div>
@@ -344,20 +388,107 @@
         </div>
       </div>
     </div>
+    </div>
   </div>
 </div>
 
 <style>
   .dash {
     height: 100%;
-    overflow-y: auto;
+    display: flex;
     background: var(--base);
+  }
+  .main {
+    flex: 1;
+    min-width: 0;
+    overflow-y: auto;
     padding: 1rem;
   }
   .inner {
     width: 100%;
     max-width: 1320px;
     margin: 0 auto;
+  }
+
+  /* Project picker sidebar — choose which projects the dashboard visualizes. */
+  .sidebar {
+    width: 185px;
+    flex-shrink: 0;
+    background: rgba(20, 20, 32, var(--sidebar-glass-alpha));
+    -webkit-backdrop-filter: var(--blur);
+    backdrop-filter: var(--blur);
+    border-right: 1px solid var(--border);
+    padding: 0.5rem;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 700;
+    color: var(--accent);
+    padding: 0.4rem 0.5rem;
+  }
+  .brand-name {
+    color: var(--accent);
+  }
+  .group-label {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--subtext);
+    padding: 0.25rem 0.5rem 0.35rem;
+  }
+  .item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.35rem 0.5rem;
+    background: none;
+    border: none;
+    border-radius: 0.4rem;
+    color: var(--text);
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.8rem;
+  }
+  .item:hover {
+    background: var(--surface);
+  }
+  .item.active {
+    color: var(--text);
+  }
+  .item:not(.active) .item-label {
+    color: var(--faint);
+  }
+  .cbox {
+    width: 14px;
+    height: 14px;
+    border-radius: 0.3rem;
+    border: 1.5px solid var(--border-strong, var(--subtext));
+    flex-shrink: 0;
+    position: relative;
+    transition: background 0.12s, border-color 0.12s;
+  }
+  .cbox.on {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  .cbox.on::after {
+    content: "";
+    position: absolute;
+    left: 4px;
+    top: 1px;
+    width: 3px;
+    height: 7px;
+    border: solid var(--base);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
   }
 
   .hero {
@@ -798,32 +929,34 @@
     border-radius: 0.5rem;
   }
   .commit {
-    padding: 0.32rem 0.1rem;
+    padding: 0.4rem 0.1rem;
   }
+  /* metadata leads: hash · author · time, grouped on one line */
+  .cmeta {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.67rem;
+    color: var(--faint);
+  }
+  .hash {
+    font-family: ui-monospace, "SF Mono", "JetBrains Mono", monospace;
+    color: var(--subtext);
+  }
+  .ctime {
+    font-variant-numeric: tabular-nums;
+  }
+  /* message sits under the metadata, lightly indented */
   .cmsg {
-    font-size: 0.78rem;
-    line-height: 1.35;
+    margin-top: 0.25rem;
+    padding-left: 0.9rem;
+    font-size: 0.8rem;
+    line-height: 1.4;
     color: var(--text);
     overflow: hidden;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     line-clamp: 2;
     -webkit-box-orient: vertical;
-  }
-  /* hash · author · time — the metadata, grouped on one line */
-  .cmeta {
-    display: flex;
-    align-items: center;
-    gap: 0.45rem;
-    margin-top: 0.2rem;
-    font-size: 0.66rem;
-    color: var(--faint);
-  }
-  .hash {
-    font-family: ui-monospace, "SF Mono", "JetBrains Mono", monospace;
-    color: var(--faint);
-  }
-  .ctime {
-    font-variant-numeric: tabular-nums;
   }
 </style>
