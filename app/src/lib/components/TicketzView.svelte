@@ -24,6 +24,7 @@
     label: Label;
     assignee: string;
     project: string;
+    points: number; // story points, Fibonacci scale (effort/size)
   }
 
   const LABEL_COLOR: Record<Label, string> = {
@@ -33,20 +34,33 @@
     chore: "var(--accent-global)",
   };
 
-  const TICKETS: Ticket[] = [
-    { id: 101, title: "Calendar date encoding (@date token)", lane: "backlog", label: "feature", assignee: "you", project: "notez2" },
-    { id: 102, title: "Ticket files synced via git", lane: "backlog", label: "feature", assignee: "alex", project: "notez2" },
-    { id: 103, title: "Extended task states: deferred / scrapped", lane: "backlog", label: "feature", assignee: "mira", project: "notez2" },
-    { id: 104, title: "repoz: broad repo status scan", lane: "backlog", label: "chore", assignee: "sam", project: "repoz" },
-    { id: 201, title: "GitHub OAuth device flow", lane: "progress", label: "feature", assignee: "you", project: "spaze" },
-    { id: 202, title: "Contextual inspector + cross counts", lane: "progress", label: "feature", assignee: "nora", project: "notez2" },
-    { id: 203, title: "epoz: git handling wrapper", lane: "progress", label: "feature", assignee: "kai", project: "epoz" },
-    { id: 301, title: "Unify toolbars on lucide icons", lane: "review", label: "design", assignee: "mira", project: "notez2" },
-    { id: 302, title: "Duplicate-path dedupe in collect_all", lane: "review", label: "bug", assignee: "you", project: "notez2" },
-    { id: 401, title: "Split markdown preview pane", lane: "done", label: "feature", assignee: "alex", project: "notez2" },
-    { id: 402, title: "todoz tree connectors", lane: "done", label: "design", assignee: "nora", project: "notez2" },
-    { id: 403, title: "Workspace + serde restructure", lane: "done", label: "chore", assignee: "you", project: "notez2" },
-  ];
+  // Fibonacci story points (Scrum-style): bigger number = bigger task.
+  const POINT_SCALE = [1, 2, 3, 5, 8, 13];
+  function pointTone(p: number): string {
+    if (p <= 2) return "var(--accent-public)"; // small
+    if (p <= 5) return "var(--accent-global)"; // medium
+    return "var(--danger)"; // large
+  }
+  function bumpPoints(t: Ticket, dir: 1 | -1) {
+    const i = POINT_SCALE.indexOf(t.points);
+    const next = Math.min(POINT_SCALE.length - 1, Math.max(0, (i < 0 ? 2 : i) + dir));
+    t.points = POINT_SCALE[next];
+  }
+
+  let TICKETS = $state<Ticket[]>([
+    { id: 101, title: "Calendar date encoding (@date token)", lane: "backlog", label: "feature", assignee: "you", project: "notez2", points: 5 },
+    { id: 102, title: "Ticket files synced via git", lane: "backlog", label: "feature", assignee: "alex", project: "notez2", points: 8 },
+    { id: 103, title: "Extended task states: deferred / scrapped", lane: "backlog", label: "feature", assignee: "mira", project: "notez2", points: 3 },
+    { id: 104, title: "repoz: broad repo status scan", lane: "backlog", label: "chore", assignee: "sam", project: "repoz", points: 5 },
+    { id: 201, title: "GitHub OAuth device flow", lane: "progress", label: "feature", assignee: "you", project: "spaze", points: 8 },
+    { id: 202, title: "Contextual inspector + cross counts", lane: "progress", label: "feature", assignee: "nora", project: "notez2", points: 5 },
+    { id: 203, title: "epoz: git handling wrapper", lane: "progress", label: "feature", assignee: "kai", project: "epoz", points: 13 },
+    { id: 301, title: "Unify toolbars on lucide icons", lane: "review", label: "design", assignee: "mira", project: "notez2", points: 3 },
+    { id: 302, title: "Duplicate-path dedupe in collect_all", lane: "review", label: "bug", assignee: "you", project: "notez2", points: 2 },
+    { id: 401, title: "Split markdown preview pane", lane: "done", label: "feature", assignee: "alex", project: "notez2", points: 5 },
+    { id: 402, title: "todoz tree connectors", lane: "done", label: "design", assignee: "nora", project: "notez2", points: 2 },
+    { id: 403, title: "Workspace + serde restructure", lane: "done", label: "chore", assignee: "you", project: "notez2", points: 13 },
+  ]);
 
   const PROJECTS = (() => {
     const order: string[] = [];
@@ -69,6 +83,17 @@
 
   function inLane(lane: Lane): Ticket[] {
     return visible.filter((t) => t.lane === lane);
+  }
+
+  // Drag a ticket between lanes.
+  let draggingId = $state<number | null>(null);
+  let dragOverLane = $state<Lane | null>(null);
+
+  function dropOn(lane: Lane) {
+    const t = TICKETS.find((x) => x.id === draggingId);
+    if (t) t.lane = lane;
+    draggingId = null;
+    dragOverLane = null;
   }
 </script>
 
@@ -109,14 +134,38 @@
 
     <div class="board">
     {#each COLUMNS as col (col.key)}
-      <section class="lane">
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <section
+        class="lane"
+        class:dragover={dragOverLane === col.key}
+        ondragover={(e) => {
+          e.preventDefault();
+          dragOverLane = col.key;
+        }}
+        ondragleave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node)) dragOverLane = null;
+        }}
+        ondrop={(e) => {
+          e.preventDefault();
+          dropOn(col.key);
+        }}
+      >
         <header class="lane-head">
           <span class="lane-label">{col.label}</span>
           <span class="lane-count">{inLane(col.key).length}</span>
         </header>
         <div class="cards">
           {#each inLane(col.key) as t (t.id)}
-            <article class="card">
+            <article
+              class="card"
+              class:dragging={draggingId === t.id}
+              draggable="true"
+              ondragstart={() => (draggingId = t.id)}
+              ondragend={() => {
+                draggingId = null;
+                dragOverLane = null;
+              }}
+            >
               <div class="card-top">
                 <span class="tag" style="--c:{LABEL_COLOR[t.label]}">{t.label}</span>
                 <span class="num">#{t.id}</span>
@@ -124,7 +173,25 @@
               <div class="card-title">{t.title}</div>
               <div class="card-foot">
                 <span class="proj">{t.project}</span>
-                <Avatar name={t.assignee} size={20} />
+                <span class="foot-right">
+                  <button
+                    class="pts"
+                    style="--pc:{pointTone(t.points)}"
+                    title="Story points — click to size up, right-click down"
+                    onclick={(e) => {
+                      e.stopPropagation();
+                      bumpPoints(t, 1);
+                    }}
+                    oncontextmenu={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      bumpPoints(t, -1);
+                    }}
+                  >
+                    {t.points}
+                  </button>
+                  <Avatar name={t.assignee} size={20} />
+                </span>
               </div>
             </article>
           {/each}
@@ -231,6 +298,11 @@
     background: rgba(255, 255, 255, 0.018);
     border: 1px solid var(--border);
     border-radius: 0.6rem;
+    transition: background 0.12s, border-color 0.12s;
+  }
+  .lane.dragover {
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
   }
   .lane-head {
     display: flex;
@@ -263,12 +335,19 @@
     border: 1px solid var(--border);
     border-radius: 0.5rem;
     padding: 0.6rem;
-    cursor: pointer;
-    transition: border-color 0.12s, transform 0.12s;
+    cursor: grab;
+    transition: border-color 0.12s, transform 0.12s, opacity 0.12s;
   }
   .card:hover {
     border-color: var(--border-strong);
     transform: translateY(-1px);
+  }
+  .card:active {
+    cursor: grabbing;
+  }
+  .card.dragging {
+    opacity: 0.45;
+    border-color: var(--accent);
   }
   .card-top {
     display: flex;
@@ -307,5 +386,31 @@
     background: var(--glass-hover);
     padding: 0.05rem 0.4rem;
     border-radius: 0.5rem;
+  }
+  .foot-right {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  /* story-point bubble — color + value convey task size */
+  .pts {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 19px;
+    height: 19px;
+    padding: 0 0.25rem;
+    border-radius: 50%;
+    border: none;
+    font: inherit;
+    font-size: 0.64rem;
+    font-weight: 800;
+    color: var(--pc);
+    background: color-mix(in srgb, var(--pc) 18%, transparent);
+    cursor: pointer;
+    font-variant-numeric: tabular-nums;
+  }
+  .pts:hover {
+    background: color-mix(in srgb, var(--pc) 30%, transparent);
   }
 </style>
