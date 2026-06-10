@@ -22,10 +22,12 @@
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", stop);
       document.body.style.cursor = "";
+      document.body.style.userSelect = "";
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", stop);
     document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none"; // no text highlight while dragging
     e.preventDefault();
   }
 </script>

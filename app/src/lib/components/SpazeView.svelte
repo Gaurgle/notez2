@@ -122,6 +122,14 @@
         <Send size={15} />
       </button>
     </form>
+
+    <div class="statusbar">
+      <span class="sb-path"># {activeRoom}</span>
+      <div class="sb-spacer"></div>
+      <span class="sb-count">
+        {(threads[activeRoom] ?? []).length} messages · {MEMBERS[activeRoom] ?? 0} members · mock
+      </span>
+    </div>
   </div>
 </div>
 
@@ -283,5 +291,24 @@
   .input:focus {
     outline: none;
     border-color: var(--accent);
+  }
+  .statusbar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.3rem 0.85rem;
+    border-top: 1px solid var(--border);
+    background: var(--mantle);
+    flex-shrink: 0;
+    font-size: 0.72rem;
+  }
+  .sb-path {
+    color: var(--subtext);
+  }
+  .sb-spacer {
+    flex: 1;
+  }
+  .sb-count {
+    color: var(--faint);
   }
 </style>

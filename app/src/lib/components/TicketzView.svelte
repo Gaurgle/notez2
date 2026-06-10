@@ -169,6 +169,7 @@
   function cardPointerDown(e: PointerEvent, t: Ticket) {
     if (e.button !== 0) return;
     pointer = { id: t.id, x0: e.clientX, y0: e.clientY, moved: false };
+    document.body.style.userSelect = "none"; // no text highlight while dragging
     window.addEventListener("pointermove", pointerMove);
     window.addEventListener("pointerup", pointerUp);
   }
@@ -193,6 +194,7 @@
   function pointerUp() {
     window.removeEventListener("pointermove", pointerMove);
     window.removeEventListener("pointerup", pointerUp);
+    document.body.style.userSelect = "";
     if (pointer && !pointer.moved) {
       selectedId = pointer.id; // a tap selects
     } else if (dragId !== null) {
