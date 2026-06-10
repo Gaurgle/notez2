@@ -4,7 +4,6 @@
   import Avatar from "$lib/components/Avatar.svelte";
   import MachineAvatar from "$lib/components/MachineAvatar.svelte";
   import MarkdownPreview from "$lib/components/MarkdownPreview.svelte";
-  import Inspector from "$lib/components/Inspector.svelte";
   import Calendar from "$lib/components/Calendar.svelte";
   import Resizer from "$lib/components/Resizer.svelte";
   import { Plus, Filter, Eye, Pencil, PanelRight, CalendarDays } from "lucide-svelte";
@@ -99,17 +98,27 @@
   }
 
   let selectedId = $state<number | null>(null);
+  let hoveredId = $state<number | null>(null);
+  let hoveredProject = $state<string | null>(null);
+  // `selected` is the pinned ticket the editor acts on; `inspected` follows the
+  // hover (a ticket, or the pinned one when nothing is hovered) so the inspector
+  // and preview reveal info live, like the other views.
   let selected = $derived(selectedId !== null ? (TICKETS.find((t) => t.id === selectedId) ?? null) : null);
+  let inspected = $derived(
+    (hoveredId !== null ? TICKETS.find((t) => t.id === hoveredId) : undefined) ??
+      (selectedId !== null ? TICKETS.find((t) => t.id === selectedId) : undefined) ??
+      null
+  );
 
-  // Side panes — all closed by default, toggled with p / e / i / c.
+  // Side panes. Inspector is open by default; preview stacks below it in the
+  // same right zone. Edit and calendar are their own panes. Toggled p/e/i/c.
   let showPreview = $state(false);
-  let showEdit = $state(false);
-  let showInspector = $state(false);
+  let showEdit = $state(true);
+  let showInspector = $state(true);
   let showCalendar = $state(false);
-  let previewWidth = $state(340);
   let editWidth = $state(320);
-  let inspectorWidth = $state(240);
   let calendarWidth = $state(250);
+  let zoneWidth = $state(310); // shared inspector + preview zone
 
   $effect(() => {
     function onKey(e: KeyboardEvent) {
@@ -224,7 +233,13 @@
         <span class="count">{TICKETS.length}</span>
       </button>
       {#each PROJECTS as p (p.name)}
-        <button class="item" class:active={activeProject === p.name} onclick={() => (activeProject = p.name)}>
+        <button
+          class="item"
+          class:active={activeProject === p.name}
+          onclick={() => (activeProject = p.name)}
+          onmouseenter={() => (hoveredProject = p.name)}
+          onmouseleave={() => hoveredProject === p.name && (hoveredProject = null)}
+        >
           <span class="item-label">{p.name}</span>
           <span class="count">{p.count}</span>
         </button>
@@ -262,6 +277,8 @@
                 class:drop-after={dropTargetId === t.id && dropAfter && dragId !== null && dragId !== t.id}
                 data-ticket={t.id}
                 onpointerdown={(e) => cardPointerDown(e, t)}
+                onmouseenter={() => dragId === null && (hoveredId = t.id)}
+                onmouseleave={() => hoveredId === t.id && (hoveredId = null)}
               >
                 <div class="card-top">
                   <span class="top-left">
@@ -364,30 +381,6 @@
     </aside>
   {/if}
 
-  {#if showPreview}
-    <Resizer get={() => previewWidth} set={(n) => (previewWidth = n)} dir={-1} min={260} max={560} />
-    <aside class="pane" style="width:{previewWidth}px">
-      {#if selected}
-        <div class="pane-head"><Eye size={13} /> Preview</div>
-        <div class="pv-title">{selected.title}</div>
-        <div class="pv-meta">
-          <span class="tag" style="--c:{LABEL_COLOR[selected.label]}">{selected.label}</span>
-          <span class="proj">{selected.project}</span>
-          <span class="lane-badge">{laneLabel(selected.lane)}</span>
-          <span class="pts" style="--pc:{pointTone(selected.points)}">{selected.points} <span class="sp">SP</span></span>
-          <span class="who"><Avatar name={selected.assignee} size={16} /> {selected.assignee}</span>
-        </div>
-        {#if selected.body.trim()}
-          <div class="pv-body"><MarkdownPreview content={selected.body} /></div>
-        {:else}
-          <div class="empty">No notes — press <kbd>e</kbd> to edit.</div>
-        {/if}
-      {:else}
-        <div class="empty">Select a ticket to preview.</div>
-      {/if}
-    </aside>
-  {/if}
-
   {#if showCalendar}
     <Resizer get={() => calendarWidth} set={(n) => (calendarWidth = n)} dir={-1} min={220} max={400} />
     <div class="calendar-col" style="width:{calendarWidth}px">
@@ -395,23 +388,66 @@
     </div>
   {/if}
 
-  {#if showInspector}
-    <Resizer get={() => inspectorWidth} set={(n) => (inspectorWidth = n)} dir={-1} min={200} max={420} />
-    <Inspector
-      width={inspectorWidth}
-      title={selected?.title ?? null}
-      showTags={false}
-      people={selected ? membersFor(selected.project) : []}
-      rows={selected
-        ? [
-            { label: "Project", value: selected.project },
-            { label: "Status", value: laneLabel(selected.lane) },
-            { label: "Label", value: selected.label },
-            { label: "Points", value: `${selected.points} SP` },
-            { label: "Assignee", value: selected.assignee },
-          ]
-        : []}
-    />
+  {#if showInspector || showPreview}
+    <Resizer get={() => zoneWidth} set={(n) => (zoneWidth = n)} dir={-1} min={250} max={540} />
+    <aside class="rightzone" style="width:{zoneWidth}px">
+      {#if showInspector}
+        <section class="zone-sec">
+          <div class="pane-head"><PanelRight size={13} /> Inspector</div>
+          {#if hoveredProject}
+            {@const pc = PROJECTS.find((x) => x.name === hoveredProject)}
+            <div class="insp-title-row">{hoveredProject}</div>
+            <div class="insp-sub">project</div>
+            <dl class="insp-rows">
+              <dt>Tickets</dt>
+              <dd>{pc?.count ?? 0}</dd>
+              <dt>Members</dt>
+              <dd>{membersFor(hoveredProject).length}</dd>
+            </dl>
+            <div class="insp-key">Members</div>
+            <div class="people">
+              {#each membersFor(hoveredProject) as m (m)}<Avatar name={m} size={20} />{/each}
+            </div>
+          {:else if inspected}
+            <div class="insp-title-row">{inspected.title}</div>
+            <div class="insp-badges">
+              <span class="tag" style="--c:{LABEL_COLOR[inspected.label]}">{inspected.label}</span>
+              <span class="lane-badge">{laneLabel(inspected.lane)}</span>
+              <span class="pts" style="--pc:{pointTone(inspected.points)}">{inspected.points} <span class="sp">SP</span></span>
+            </div>
+            <dl class="insp-rows">
+              <dt>Project</dt>
+              <dd>{inspected.project}</dd>
+              <dt>Status</dt>
+              <dd>{laneLabel(inspected.lane)}</dd>
+              <dt>Assignee</dt>
+              <dd class="who"><Avatar name={inspected.assignee} size={16} /> {inspected.assignee}</dd>
+              <dt>Points</dt>
+              <dd>{inspected.points} SP</dd>
+            </dl>
+            <div class="insp-key">Project members</div>
+            <div class="people">
+              {#each membersFor(inspected.project) as m (m)}<Avatar name={m} size={20} />{/each}
+            </div>
+          {:else}
+            <div class="empty">Hover or select a ticket.</div>
+          {/if}
+        </section>
+      {/if}
+
+      {#if showPreview}
+        <section class="zone-sec preview-sec">
+          <div class="pane-head"><Eye size={13} /> Preview</div>
+          {#if inspected && inspected.body.trim()}
+            <div class="pv-body"><MarkdownPreview content={inspected.body} /></div>
+          {:else if inspected}
+            <div class="empty">No notes — press <kbd>e</kbd> to edit.</div>
+          {:else}
+            <div class="empty">Hover or select a ticket.</div>
+          {/if}
+        </section>
+      {/if}
+    </aside>
   {/if}
 </div>
 
@@ -828,20 +864,6 @@
     outline: none;
     border-color: var(--accent);
   }
-  .pv-title {
-    font-size: 1rem;
-    font-weight: 700;
-    color: var(--text);
-    line-height: 1.3;
-  }
-  .pv-meta {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.4rem;
-    font-size: 0.7rem;
-    color: var(--subtext);
-  }
   .lane-badge {
     font-size: 0.62rem;
     color: var(--subtext);
@@ -849,15 +871,85 @@
     padding: 0.08rem 0.45rem;
     border-radius: 0.5rem;
   }
-  .who {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-  }
   .pv-body {
     border: 1px solid var(--border);
     border-radius: 0.5rem;
     overflow: hidden;
+  }
+
+  /* Combined inspector + preview zone (inspector on top, preview below) */
+  .rightzone {
+    flex-shrink: 0;
+    border-left: 1px solid var(--border);
+    background: var(--mantle);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+  .zone-sec {
+    padding: 0.85rem 0.9rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .zone-sec + .zone-sec {
+    border-top: 1px solid var(--border);
+  }
+  .preview-sec {
+    flex: 1;
+    min-height: 0;
+  }
+  .insp-title-row {
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--text);
+    line-height: 1.3;
+  }
+  .insp-sub {
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--faint);
+  }
+  .insp-badges {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+  }
+  .insp-rows {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.35rem 0.75rem;
+    margin: 0.2rem 0 0;
+  }
+  .insp-rows dt {
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--faint);
+  }
+  .insp-rows dd {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--subtext);
+  }
+  .insp-rows dd.who {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+  .insp-key {
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--faint);
+    margin-top: 0.3rem;
+  }
+  .people {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
   }
   kbd {
     font-family: ui-monospace, monospace;
