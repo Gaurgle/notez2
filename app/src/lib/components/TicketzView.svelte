@@ -258,7 +258,8 @@
       </button>
     </div>
 
-    <div class="board">
+    <div class="panes">
+      <div class="board">
       {#each COLUMNS as col (col.key)}
         <section class="lane" class:dragover={dropLane === col.key && dragId !== null} data-lane={col.key}>
           <header class="lane-head">
@@ -304,30 +305,9 @@
           </div>
         </section>
       {/each}
-    </div>
-
-    <div class="statusbar">
-      <span class="sb-path">{selected ? selected.title : "no ticket selected"}</span>
-      <div class="sb-spacer"></div>
-      <span class="sb-count">{visible.length} tickets</span>
-      <div class="pane-toggles">
-        <button class="pane-toggle" class:on={showPreview} onclick={() => (showPreview = !showPreview)} title="Preview (p)" aria-label="Toggle preview">
-          <Eye size={14} />
-        </button>
-        <button class="pane-toggle" class:on={showEdit} onclick={() => (showEdit = !showEdit)} title="Edit (e)" aria-label="Toggle edit">
-          <Pencil size={14} />
-        </button>
-        <button class="pane-toggle" class:on={showCalendar} onclick={() => (showCalendar = !showCalendar)} title="Calendar (c)" aria-label="Toggle calendar">
-          <CalendarDays size={14} />
-        </button>
-        <button class="pane-toggle" class:on={showInspector} onclick={() => (showInspector = !showInspector)} title="Inspector (i)" aria-label="Toggle inspector">
-          <PanelRight size={14} />
-        </button>
       </div>
-    </div>
-  </div>
 
-  {#if showEdit}
+      {#if showEdit}
     <Resizer get={() => editWidth} set={(n) => (editWidth = n)} dir={-1} min={260} max={520} />
     <aside class="pane" style="width:{editWidth}px">
       {#if selected}
@@ -447,7 +427,29 @@
         </section>
       {/if}
     </aside>
-  {/if}
+      {/if}
+    </div>
+
+    <div class="statusbar">
+      <span class="sb-path">{selected ? selected.title : "no ticket selected"}</span>
+      <div class="sb-spacer"></div>
+      <span class="sb-count">{visible.length} tickets</span>
+      <div class="pane-toggles">
+        <button class="pane-toggle" class:on={showPreview} onclick={() => (showPreview = !showPreview)} title="Preview (p)" aria-label="Toggle preview">
+          <Eye size={14} />
+        </button>
+        <button class="pane-toggle" class:on={showEdit} onclick={() => (showEdit = !showEdit)} title="Edit (e)" aria-label="Toggle edit">
+          <Pencil size={14} />
+        </button>
+        <button class="pane-toggle" class:on={showCalendar} onclick={() => (showCalendar = !showCalendar)} title="Calendar (c)" aria-label="Toggle calendar">
+          <CalendarDays size={14} />
+        </button>
+        <button class="pane-toggle" class:on={showInspector} onclick={() => (showInspector = !showInspector)} title="Inspector (i)" aria-label="Toggle inspector">
+          <PanelRight size={14} />
+        </button>
+      </div>
+    </div>
+  </div>
 </div>
 
 {#if ghost && draggedTicket}
@@ -533,9 +535,15 @@
     color: var(--accent);
     font-size: 0.95rem;
   }
-  .board {
+  /* board + side panes share a row; the statusbar sits below it, full width */
+  .panes {
     flex: 1;
     min-height: 0;
+    display: flex;
+  }
+  .board {
+    flex: 1;
+    min-width: 0;
     display: flex;
     gap: 0.75rem;
     padding: 0.85rem;
