@@ -6,7 +6,7 @@
   import MarkdownPreview from "$lib/components/MarkdownPreview.svelte";
   import Calendar from "$lib/components/Calendar.svelte";
   import Resizer from "$lib/components/Resizer.svelte";
-  import { Plus, Filter, Eye, Pencil, PanelRight, CalendarDays } from "lucide-svelte";
+  import { Plus, Eye, Pencil, PanelRight, CalendarDays } from "lucide-svelte";
 
   let { active = true }: { active?: boolean } = $props();
 
@@ -253,7 +253,6 @@
       <span class="title">Ticketz</span>
       <span class="counts">{visible.length} tickets{activeProject ? ` · ${activeProject}` : ""} · mock</span>
       <div class="spacer"></div>
-      <button class="ghost iconbtn icononly" title="Filter" aria-label="Filter"><Filter size={15} /></button>
       <button class="newbtn" onclick={() => newTicket()} title="New ticket (in Backlog)">
         <Plus size={15} /> New
       </button>
@@ -738,32 +737,7 @@
   .sb-count {
     color: var(--faint);
   }
-  .pane-toggles {
-    display: flex;
-    gap: 0.2rem;
-  }
-  .pane-toggle {
-    display: grid;
-    place-items: center;
-    width: 26px;
-    height: 22px;
-    border: none;
-    border-radius: 0.4rem;
-    background: none;
-    color: var(--faint);
-    opacity: 0.5;
-    cursor: pointer;
-    transition: opacity 0.12s, color 0.12s, background 0.12s;
-  }
-  .pane-toggle:hover {
-    opacity: 0.9;
-    background: var(--glass-hover);
-  }
-  .pane-toggle.on {
-    opacity: 1;
-    color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 14%, transparent);
-  }
+  /* .pane-toggles / .pane-toggle come from app.css (shared with notes/todoz) */
 
   /* preview / edit panes */
   .pane {
