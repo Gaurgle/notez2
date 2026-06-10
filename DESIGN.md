@@ -244,6 +244,46 @@ todoz preview pane, so this is moving from idea to in-progress):
 
 Captured here so it isn't lost.
 
+### Refactor: a shared view shell (tech debt, do later)
+
+The three working views — `NotesView`, `TodozView`, `TicketzView` — each
+**hand-roll the same chrome**, and it has drifted. This isn't urgent, but it
+should be consolidated before adding more views.
+
+What's duplicated across the views (with subtle, accidental differences):
+
+- **Sidebar**: brand (`MachineAvatar` + name), `group` / `group-label` / `item`
+  / `count`, the project list, and ~60 lines of identical CSS — copy-pasted into
+  each view (and into the Dashboard sidebar). Notes uses the standalone
+  `Sidebar.svelte`; todoz/ticketz/dashboard re-implement it inline.
+- **Footer / pane toggles**: each view rebuilds the statusbar + `pane-toggle`
+  buttons. Ticketz had even diverged with a **local `.pane-toggle`** (purple
+  background) that broke parity with notes — only caught by eye. The shared
+  `.pane-toggle` lives in `app.css`; views should not redefine it.
+- **Resizable panes**: every view repeats `Resizer` + a `*Width` `$state` +
+  the `{#if showX}` pane wiring, with per-view min/max drift.
+- **Pane toggles + keybinds**: the `p` / `c` / `i` / `e` handlers and the
+  show-state booleans are re-written per view (todoz/notes via melt `Toggle`,
+  ticketz via a hand-rolled keydown effect).
+- **Inspector / Calendar**: sometimes the shared `Inspector.svelte` /
+  `Calendar.svelte` components, sometimes inline markup (ticketz inspector is
+  inline). Same for the calendar pane wrapper.
+
+Proposed shape:
+
+- A `<ViewShell>` that owns the sidebar slot, the main slot, the right-pane
+  stack, the footer with toggle indicators, and the pane show-state + keybinds +
+  persisted widths. Views provide content via slots/props.
+- One `Sidebar` (brand + groups + items) reused everywhere (incl. Dashboard).
+- Move the sidebar / footer / pane-toggle / item CSS into `app.css` (or the
+  shared components) as the single source of truth; delete the per-view copies.
+- Standardize on `Inspector.svelte` + `Calendar.svelte` in every view.
+- A tiny `usePanes()` rune for `{showPreview, showInspector, showCalendar,
+  showEdit}` + keybinds + width persistence.
+
+Goal: a new view is "sidebar content + main content + which panes," not a
+re-implementation of the chrome.
+
 ### Scope migration (move notes/todos between scopes)
 
 Sometimes a note that started as personal should become public, or a local
