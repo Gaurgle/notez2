@@ -4,8 +4,10 @@
   import Avatar from "$lib/components/Avatar.svelte";
   import MachineAvatar from "$lib/components/MachineAvatar.svelte";
   import MarkdownPreview from "$lib/components/MarkdownPreview.svelte";
+  import Inspector from "$lib/components/Inspector.svelte";
+  import Calendar from "$lib/components/Calendar.svelte";
   import Resizer from "$lib/components/Resizer.svelte";
-  import { Plus, Filter, Eye, Pencil } from "lucide-svelte";
+  import { Plus, Filter, Eye, Pencil, PanelRight, CalendarDays } from "lucide-svelte";
 
   let { active = true }: { active?: boolean } = $props();
 
@@ -99,11 +101,15 @@
   let selectedId = $state<number | null>(null);
   let selected = $derived(selectedId !== null ? (TICKETS.find((t) => t.id === selectedId) ?? null) : null);
 
-  // Preview / edit panes — closed by default, toggled with p / e.
+  // Side panes — all closed by default, toggled with p / e / i / c.
   let showPreview = $state(false);
   let showEdit = $state(false);
+  let showInspector = $state(false);
+  let showCalendar = $state(false);
   let previewWidth = $state(340);
   let editWidth = $state(320);
+  let inspectorWidth = $state(240);
+  let calendarWidth = $state(250);
 
   $effect(() => {
     function onKey(e: KeyboardEvent) {
@@ -115,22 +121,23 @@
       if (!active) return;
       if (e.key === "p") showPreview = !showPreview;
       else if (e.key === "e") showEdit = !showEdit;
+      else if (e.key === "i") showInspector = !showInspector;
+      else if (e.key === "c") showCalendar = !showCalendar;
       else if (e.key === "Escape") {
-        showPreview = false;
-        showEdit = false;
+        showPreview = showEdit = showInspector = showCalendar = false;
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  function newTicket() {
+  function newTicket(lane: Lane = "backlog") {
     const project = activeProject ?? PROJECTS[0]?.name ?? "notez2";
     const id = nextId++;
-    TICKETS.unshift({
+    TICKETS.push({
       id,
       title: "New ticket",
-      lane: "backlog",
+      lane,
       label: "feature",
       assignee: membersFor(project)[0] ?? "you",
       project,
@@ -232,7 +239,9 @@
       <span class="counts">{visible.length} tickets{activeProject ? ` · ${activeProject}` : ""} · mock</span>
       <div class="spacer"></div>
       <button class="ghost iconbtn icononly" title="Filter" aria-label="Filter"><Filter size={15} /></button>
-      <button class="ghost iconbtn icononly" onclick={newTicket} title="New ticket" aria-label="New ticket"><Plus size={16} /></button>
+      <button class="newbtn" onclick={() => newTicket()} title="New ticket (in Backlog)">
+        <Plus size={15} /> New
+      </button>
     </div>
 
     <div class="board">
@@ -273,6 +282,9 @@
                 </div>
               </div>
             {/each}
+            <button class="add-card" onclick={() => newTicket(col.key)}>
+              <Plus size={13} /> Add ticket
+            </button>
           </div>
         </section>
       {/each}
@@ -289,6 +301,12 @@
         <button class="pane-toggle" class:on={showEdit} onclick={() => (showEdit = !showEdit)} title="Edit (e)" aria-label="Toggle edit">
           <Pencil size={14} />
         </button>
+        <button class="pane-toggle" class:on={showCalendar} onclick={() => (showCalendar = !showCalendar)} title="Calendar (c)" aria-label="Toggle calendar">
+          <CalendarDays size={14} />
+        </button>
+        <button class="pane-toggle" class:on={showInspector} onclick={() => (showInspector = !showInspector)} title="Inspector (i)" aria-label="Toggle inspector">
+          <PanelRight size={14} />
+        </button>
       </div>
     </div>
   </div>
@@ -302,26 +320,32 @@
           <span class="flabel">Title</span>
           <input class="f-input" value={selected.title} oninput={(e) => selected && (selected.title = e.currentTarget.value)} />
         </label>
-        <div class="field-row">
-          <label class="field">
-            <span class="flabel">Label</span>
-            <select class="f-input" value={selected.label} onchange={(e) => selected && (selected.label = e.currentTarget.value as Label)}>
-              {#each LABELS as l (l)}<option value={l}>{l}</option>{/each}
-            </select>
-          </label>
-          <label class="field">
-            <span class="flabel">Status</span>
-            <select class="f-input" value={selected.lane} onchange={(e) => selected && (selected.lane = e.currentTarget.value as Lane)}>
-              {#each COLUMNS as c (c.key)}<option value={c.key}>{c.label}</option>{/each}
-            </select>
-          </label>
+        <div class="field">
+          <span class="flabel">Label</span>
+          <div class="seg">
+            {#each LABELS as l (l)}
+              <button class="seg-btn" class:on={selected.label === l} style="--c:{LABEL_COLOR[l]}" onclick={() => selected && (selected.label = l)}>{l}</button>
+            {/each}
+          </div>
         </div>
-        <label class="field">
+        <div class="field">
+          <span class="flabel">Status</span>
+          <div class="seg">
+            {#each COLUMNS as c (c.key)}
+              <button class="seg-btn" class:on={selected.lane === c.key} onclick={() => selected && (selected.lane = c.key)}>{c.label}</button>
+            {/each}
+          </div>
+        </div>
+        <div class="field">
           <span class="flabel">Assignee · {selected.project} members</span>
-          <select class="f-input" value={selected.assignee} onchange={(e) => selected && (selected.assignee = e.currentTarget.value)}>
-            {#each membersFor(selected.project) as m (m)}<option value={m}>{m}</option>{/each}
-          </select>
-        </label>
+          <div class="seg seg-wrap">
+            {#each membersFor(selected.project) as m (m)}
+              <button class="seg-btn person" class:on={selected.assignee === m} onclick={() => selected && (selected.assignee = m)}>
+                <Avatar name={m} size={15} /> {m}
+              </button>
+            {/each}
+          </div>
+        </div>
         <div class="field">
           <span class="flabel">Story points</span>
           <div class="pt-picker">
@@ -362,6 +386,32 @@
         <div class="empty">Select a ticket to preview.</div>
       {/if}
     </aside>
+  {/if}
+
+  {#if showCalendar}
+    <Resizer get={() => calendarWidth} set={(n) => (calendarWidth = n)} dir={-1} min={220} max={400} />
+    <div class="calendar-col" style="width:{calendarWidth}px">
+      <Calendar />
+    </div>
+  {/if}
+
+  {#if showInspector}
+    <Resizer get={() => inspectorWidth} set={(n) => (inspectorWidth = n)} dir={-1} min={200} max={420} />
+    <Inspector
+      width={inspectorWidth}
+      title={selected?.title ?? null}
+      showTags={false}
+      people={selected ? membersFor(selected.project) : []}
+      rows={selected
+        ? [
+            { label: "Project", value: selected.project },
+            { label: "Status", value: laneLabel(selected.lane) },
+            { label: "Label", value: selected.label },
+            { label: "Points", value: `${selected.points} SP` },
+            { label: "Assignee", value: selected.assignee },
+          ]
+        : []}
+    />
   {/if}
 </div>
 
@@ -714,13 +764,6 @@
     flex: 1;
     min-height: 0;
   }
-  .field-row {
-    display: flex;
-    gap: 0.6rem;
-  }
-  .field-row .field {
-    flex: 1;
-  }
   .flabel {
     font-size: 0.62rem;
     text-transform: uppercase;
@@ -822,5 +865,98 @@
     background: var(--surface-active);
     border-radius: 0.3rem;
     padding: 0.02rem 0.3rem;
+  }
+
+  /* toolbar "New" button */
+  .newbtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.3rem 0.6rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--border);
+    background: var(--glass-hover);
+    color: var(--text);
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 600;
+  }
+  .newbtn:hover {
+    background: var(--glass-active);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  /* per-lane add affordance */
+  .add-card {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3rem;
+    width: 100%;
+    padding: 0.4rem;
+    border: 1px dashed var(--border);
+    border-radius: 0.5rem;
+    background: none;
+    color: var(--faint);
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.72rem;
+  }
+  .add-card:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+  }
+
+  /* segmented pill selectors (replace dropdowns) */
+  .seg {
+    display: flex;
+    gap: 0.3rem;
+  }
+  .seg-wrap {
+    flex-wrap: wrap;
+  }
+  .seg-btn {
+    flex: 1;
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3rem;
+    padding: 0.32rem 0.45rem;
+    border: 1px solid var(--border);
+    border-radius: 0.4rem;
+    background: none;
+    color: var(--subtext);
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: capitalize;
+    white-space: nowrap;
+    transition: border-color 0.12s, color 0.12s, background 0.12s;
+  }
+  .seg-btn:hover {
+    border-color: var(--border-strong);
+    color: var(--text);
+  }
+  .seg-btn.on {
+    color: var(--c, var(--accent));
+    border-color: var(--c, var(--accent));
+    background: color-mix(in srgb, var(--c, var(--accent)) 14%, transparent);
+  }
+  .seg-wrap .seg-btn {
+    flex: 0 0 auto;
+  }
+
+  /* calendar pane */
+  .calendar-col {
+    flex-shrink: 0;
+    min-width: 0;
+    overflow-y: auto;
+    border-left: 1px solid var(--border);
+    background: var(--mantle);
   }
 </style>
