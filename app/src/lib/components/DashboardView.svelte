@@ -89,6 +89,14 @@
     repoz: "var(--accent-public)",
     epoz: "var(--accent-global)",
   };
+  // Per-repo metadata for the repoz-style commit listing: working-tree path
+  // and how many commits the local branch trails its upstream.
+  const REPO_META: Record<string, { path: string; behind: number }> = {
+    notez2: { path: "~/Repos/notez2", behind: 11 },
+    spaze: { path: "~/Repos/spaze", behind: 2 },
+    repoz: { path: "~/Repos/repoz", behind: 0 },
+    epoz: { path: "~/Repos/epoz", behind: 1 },
+  };
 
   const TEAM = [
     { name: "you", online: true },
@@ -126,8 +134,17 @@
     { hash: "c13f6d8", msg: "docs: README + scope model", repo: "notez2", by: "nora", time: "1w" },
   ];
 
-  type Commit = (typeof COMMITS)[number];
-  const COMMIT_GROUPS: { repo: string; commits: Commit[] }[] = (() => {
+  type Commit = (typeof COMMITS)[number] & { add: number; del: number };
+  type CommitGroup = { repo: string; path: string; behind: number; commits: Commit[] };
+  // Derive a stable +added/−removed churn for each commit from its hash so the
+  // repoz-style diff stats stay constant across renders without real git data.
+  function diffStat(hash: string): { add: number; del: number } {
+    const add = 1 + (hashStr(hash + ":add") % 420);
+    // Roughly a third of commits are pure additions (no deletions), like the CLI.
+    const del = hashStr(hash) % 3 === 0 ? 0 : 1 + (hashStr(hash + ":del") % 260);
+    return { add, del };
+  }
+  const COMMIT_GROUPS: CommitGroup[] = (() => {
     const order: string[] = [];
     const map: Record<string, Commit[]> = {};
     for (const c of COMMITS) {
@@ -135,9 +152,14 @@
         map[c.repo] = [];
         order.push(c.repo);
       }
-      map[c.repo].push(c);
+      map[c.repo].push({ ...c, ...diffStat(c.hash) });
     }
-    return order.map((repo) => ({ repo, commits: map[repo] }));
+    return order.map((repo) => ({
+      repo,
+      path: REPO_META[repo]?.path ?? `~/Repos/${repo}`,
+      behind: REPO_META[repo]?.behind ?? 0,
+      commits: map[repo],
+    }));
   })();
 
   // --- Project visibility (sidebar) --------------------------------------
@@ -164,6 +186,7 @@
 
   let visibleCommitGroups = $derived(COMMIT_GROUPS.filter((g) => selectedProjects.has(g.repo)));
   let visibleRepos = $derived(REPOS.filter((r) => selectedProjects.has(r.name)));
+  let totalBehind = $derived(visibleCommitGroups.reduce((n, g) => n + g.behind, 0));
 
   // --- Gridstack ---------------------------------------------------------
   // Spread the gs-* layout attributes via a helper (keeps them off the typed
@@ -364,26 +387,35 @@
       <div class="grid-stack-item" {...gs({ id: "commits", x: 0, y: 7, w: 12, h: 5, minW: 4, minH: 3 })}>
         <div class="grid-stack-item-content card">
           <div class="card-head"><GitCommitHorizontal size={13} /> Recent commits</div>
-          <div class="commit-cols">
+          <div class="repoz">
             {#each visibleCommitGroups as g (g.repo)}
-              <div class="commit-col">
-                <div class="proj-head">
+              <div class="repo-block">
+                <div class="repo-line">
                   <span class="proj-dot" style="--c:{REPO_COLOR[g.repo] ?? 'var(--subtext)'}"></span>
-                  <span class="proj-name">{g.repo}</span>
-                  <span class="proj-count">{g.commits.length}</span>
+                  <span class="repo-name">{g.repo}</span>
+                  <span class="repo-path">{g.path}</span>
+                  <span class="leader"></span>
+                  {#if g.behind > 0}
+                    <span class="behind">{g.behind} behind</span>
+                  {:else}
+                    <span class="clean">up to date</span>
+                  {/if}
                 </div>
                 {#each g.commits as c (c.hash)}
-                  <div class="commit">
-                    <div class="cmeta">
-                      <span class="hash">{c.hash}</span>
-                      <Avatar name={c.by} size={18} />
-                      <span class="ctime">{c.time}</span>
-                    </div>
-                    <div class="cmsg">{c.msg}</div>
+                  <div class="crow">
+                    <span class="hash">{c.hash}</span>
+                    <span class="cmsg">{c.msg}</span>
+                    <span class="leader"></span>
+                    <span class="stats">
+                      <span class="add">+{c.add}</span>
+                      {#if c.del > 0}<span class="del">−{c.del}</span>{/if}
+                    </span>
+                    <span class="author">{c.by}</span>
                   </div>
                 {/each}
               </div>
             {/each}
+            <div class="repoz-foot">{totalBehind} behind</div>
           </div>
         </div>
       </div>
@@ -884,30 +916,28 @@
     padding: 0.7rem;
   }
 
-  /* Commit feed — projects side by side as columns. */
-  .commit-cols {
+  /* Commit feed — repoz CLI listing: one full-width row per commit, with a
+     per-repo path header, dotted leaders, +/− churn, and an author column. */
+  .repoz {
     flex: 1;
     overflow-y: auto;
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
-    gap: 0.4rem 1.5rem;
-    align-content: start;
+    padding: 0.55rem 0.7rem 0.45rem;
+    background: var(--base);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-family: ui-monospace, "SF Mono", "JetBrains Mono", monospace;
+    font-size: 0.78rem;
+    line-height: 1.65;
   }
-  .commit-col {
-    min-width: 0;
+  .repo-block {
+    margin-bottom: 0.7rem;
   }
-  .proj-head {
+  /* repo header: dot · name · path ···· N behind */
+  .repo-line {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
-    padding: 0.1rem 0 0.4rem;
-    margin-bottom: 0.25rem;
-    border-bottom: 1px solid var(--border);
-    font-size: 0.74rem;
-    font-weight: 700;
-    position: sticky;
-    top: 0;
-    background: var(--mantle);
+    gap: 0.5rem;
+    font-weight: 600;
   }
   .proj-dot {
     width: 7px;
@@ -917,46 +947,71 @@
     opacity: 0.65;
     flex-shrink: 0;
   }
-  .proj-name {
+  .repo-name {
     color: var(--text);
   }
-  .proj-count {
-    font-size: 0.58rem;
-    font-weight: 600;
+  .repo-path {
     color: var(--faint);
-    background: var(--glass-hover);
-    padding: 0.02rem 0.35rem;
-    border-radius: 0.5rem;
+    font-weight: 400;
   }
-  .commit {
-    padding: 0.4rem 0.1rem;
+  .behind {
+    color: var(--accent-global);
+    flex-shrink: 0;
   }
-  /* metadata leads: hash · author · time, grouped on one line */
-  .cmeta {
+  .clean {
+    color: var(--faint);
+    flex-shrink: 0;
+  }
+  /* commit row: hash  message ···· +add −del  author */
+  .crow {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    font-size: 0.67rem;
-    color: var(--faint);
+    padding-left: 0.6rem;
   }
   .hash {
-    font-family: ui-monospace, "SF Mono", "JetBrains Mono", monospace;
-    color: var(--subtext);
+    color: var(--accent-personal);
+    flex-shrink: 0;
   }
-  .ctime {
-    font-variant-numeric: tabular-nums;
-  }
-  /* message sits under the metadata, lightly indented */
   .cmsg {
-    margin-top: 0.25rem;
-    padding-left: 0.9rem;
-    font-size: 0.8rem;
-    line-height: 1.4;
     color: var(--text);
+    flex: 0 1 auto;
+    min-width: 0;
+    white-space: nowrap;
     overflow: hidden;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-    -webkit-box-orient: vertical;
+    text-overflow: ellipsis;
+  }
+  /* dotted leader fills the gap between content and the right-hand columns */
+  .leader {
+    flex: 1 1 1.5rem;
+    align-self: center;
+    min-width: 1rem;
+    height: 0.85em;
+    border-bottom: 1px dotted rgba(255, 255, 255, 0.18);
+  }
+  .stats {
+    flex-shrink: 0;
+    width: 6.5em;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+  }
+  .add {
+    color: var(--accent-public);
+  }
+  .del {
+    color: var(--danger);
+  }
+  .author {
+    flex-shrink: 0;
+    width: 4.5em;
+    color: var(--faint);
+  }
+  .repoz-foot {
+    padding-top: 0.45rem;
+    border-top: 1px solid var(--border);
+    color: var(--accent-global);
   }
 </style>

@@ -236,11 +236,18 @@ todoz preview pane, so this is moving from idea to in-progress):
 - [ ] **Ticketz: drag cards between columns** (Backlog / In progress / Review /
   Done) — kanban drag-and-drop.
 - [ ] **Widget resize handles still too thick** — make thinner again.
-- [ ] **Recent-commits widget**: keep refining the look (columns landed; tune
-  density, message clamping, spacing).
-- [ ] **Avatars in recent commits**: make bigger; the hover-name reveal should
-  be **faster** than the native `title` delay (custom tooltip, mind overflow
-  clipping inside cards).
+- [x] **Recent-commits widget → repoz CLI style**: restyled to mirror the
+  `repoz` terminal output — per-repo `name ~/path ···· N behind` header, one
+  full-width row per commit (`hash  message ···· +adds −dels  author`),
+  monospace, dotted leaders, green/red churn, footer total. Replaced the
+  multi-column avatar cards.
+- [ ] **repoz: alternative layout for multiple selected repos.** The current
+  full-width single-column listing reads great for **one** repo, but when
+  several projects are selected the stacked per-repo blocks get long and the
+  `behind`/path headers compete for attention. Need an alternative way to show
+  repoz across multiple repos (e.g. collapsible per-repo sections, a compact
+  summary row per repo with expand-on-demand, or side-by-side columns again for
+  the multi-repo case). Single-repo view stays as-is.
 
 Captured here so it isn't lost.
 
