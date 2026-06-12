@@ -208,8 +208,10 @@ todoz preview pane, so this is moving from idea to in-progress):
 - [x] Notes: real days-with-notes are lit (from mtimes); **multi-day selection
   filters the list**, with a clear button.
 - [ ] Tickets: calendar pane once tickets carry due dates / milestones.
-- [ ] **Draggable start/end date range** in the calendar (drag to select a span,
-  not just click individual days).
+- [x] **Draggable start/end date range** in the calendar — drag across days to
+  select a span (live preview while dragging, commits the whole range on
+  release; plain click still toggles one day). Wired into notes' day filter via
+  an `onRange` callback. Single source: `Calendar.svelte`.
 - [ ] The real date model: `@date` for todos, frontmatter/mtime for notes, so
   selections round-trip through the CLI. Calendar is navigation-only until then.
 - [ ] A fuller calendar view aggregating dated todos across sections and scopes.
@@ -233,9 +235,11 @@ todoz preview pane, so this is moving from idea to in-progress):
   identity). Skipped during edits/dialogs. _Follow-up: proper fs-watch (notify →
   emit event) to replace polling; and the TUI doesn't auto-refresh on desktop
   edits — that's a notez-cli change._
-- [ ] **Ticketz: drag cards between columns** (Backlog / In progress / Review /
-  Done) — kanban drag-and-drop.
-- [ ] **Widget resize handles still too thick** — make thinner again.
+- [x] **Ticketz: drag cards between columns** (Backlog / In progress / Review /
+  Done) — pointer-based kanban drag-and-drop (WKWebView won't fire HTML5 DnD),
+  with reorder-within-lane and a floating ghost.
+- [x] **Widget resize handles** — thinned to 5px rounded corner dots + 2px edge
+  pills, hidden until hover with a delayed fade-in.
 - [x] **Recent-commits widget → repoz CLI style**: restyled to mirror the
   `repoz` terminal output — per-repo `name ~/path ···· N behind` header, one
   full-width row per commit (`hash  message ···· +adds −dels  author`),

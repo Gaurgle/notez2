@@ -5,6 +5,10 @@
   //   marked   — ISO "YYYY-MM-DD" dates to flag with an event dot
   //   selected — parent-owned set of picked days (multi-select); highlighted
   //   onPick   — called when a day is clicked (e.g. toggle a day filter)
+  //   onRange  — called when the user drags across a span; receives every ISO
+  //              day in the range (inclusive) plus `additive`: true to select
+  //              the span, false to deselect it (decided by the anchor day's
+  //              current state). Falls back to onPick-per-day.
   //   onClear  — called by the clear button (shown when selected is non-empty)
   //   label    — small badge text (e.g. "mock"); hidden when empty
   // With no `marked`, it falls back to a decorative mock so todoz stays alive.
@@ -12,12 +16,14 @@
     marked,
     selected,
     onPick,
+    onRange,
     onClear,
     label = "",
   }: {
     marked?: Set<string>;
     selected?: Set<string>;
     onPick?: (iso: string, date: Date) => void;
+    onRange?: (isos: string[], dates: Date[], additive: boolean) => void;
     onClear?: () => void;
     label?: string;
   } = $props();
@@ -25,6 +31,15 @@
   let ref = $state<Date | null>(null); // first day of the viewed month
   let today = $state<Date | null>(null);
   let localSel = $state<string | null>(null); // single-select fallback
+
+  // Drag-to-select a span. Anchor is where the pointer went down; hover is the
+  // day currently under the pointer. A real drag (moved across days) commits a
+  // range on release; a plain click still toggles a single day.
+  let dragAnchor = $state<string | null>(null);
+  let dragHover = $state<string | null>(null);
+  let dragAdditive = $state(true); // false when the anchor day was already selected
+  let dragMoved = false;
+  let suppressClick = false;
 
   onMount(() => {
     const now = new Date();
@@ -37,6 +52,24 @@
 
   function iso(d: Date): string {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+  // Parse an ISO key back to a local Date (component-wise, so no UTC shift).
+  function parseIso(s: string): Date {
+    const [y, m, d] = s.split("-").map(Number);
+    return new Date(y, m - 1, d);
+  }
+  // Every ISO day from a..b inclusive, regardless of drag direction.
+  function rangeIsos(a: string, b: string): string[] {
+    let start = parseIso(a);
+    let end = parseIso(b);
+    if (start > end) [start, end] = [end, start];
+    const out: string[] = [];
+    const cur = new Date(start);
+    while (cur <= end) {
+      out.push(iso(cur));
+      cur.setDate(cur.getDate() + 1);
+    }
+    return out;
   }
 
   const monthLabel = $derived(
@@ -76,6 +109,49 @@
     if (!ref) return;
     ref = new Date(ref.getFullYear(), ref.getMonth() + delta, 1);
   }
+
+  // Live preview of the span being dragged, so the user sees it before release.
+  const previewRange = $derived.by(() => {
+    if (!dragAnchor || !dragHover) return new Set<string>();
+    return new Set(rangeIsos(dragAnchor, dragHover));
+  });
+
+  function dayPointerDown(d: Date, e: PointerEvent) {
+    if (e.button !== 0) return; // left button only
+    suppressClick = false;
+    dragAnchor = iso(d);
+    dragHover = iso(d);
+    dragAdditive = !isSelected(d); // drag off a selected day removes the span
+    dragMoved = false;
+    document.body.style.userSelect = "none";
+    window.addEventListener("pointerup", endDrag);
+  }
+  function dayPointerEnter(d: Date) {
+    if (!dragAnchor) return;
+    const k = iso(d);
+    if (k !== dragHover) dragHover = k;
+    if (k !== dragAnchor) dragMoved = true;
+  }
+  function endDrag() {
+    window.removeEventListener("pointerup", endDrag);
+    document.body.style.userSelect = "";
+    if (dragAnchor && dragHover && dragMoved && dragAnchor !== dragHover) {
+      const isos = rangeIsos(dragAnchor, dragHover);
+      suppressClick = true; // the trailing click on the anchor is a drag artifact
+      if (onRange) onRange(isos, isos.map(parseIso), dragAdditive);
+      else isos.forEach((s) => onPick?.(s, parseIso(s)));
+    }
+    dragAnchor = null;
+    dragHover = null;
+    dragMoved = false;
+  }
+  function dayClick(d: Date) {
+    if (suppressClick) {
+      suppressClick = false;
+      return;
+    }
+    pick(d);
+  }
 </script>
 
 <div class="cal">
@@ -104,7 +180,11 @@
           class="day"
           class:today={isToday(d)}
           class:selected={isSelected(d)}
-          onclick={() => pick(d)}
+          class:in-range={dragAdditive && previewRange.has(iso(d))}
+          class:range-remove={!dragAdditive && previewRange.has(iso(d))}
+          onpointerdown={(e) => dayPointerDown(d, e)}
+          onpointerenter={() => dayPointerEnter(d)}
+          onclick={() => dayClick(d)}
         >
           <span class="n">{d.getDate()}</span>
           {#if hasEvent(d)}<span class="ev"></span>{/if}
@@ -222,6 +302,18 @@
   .day.selected {
     background: color-mix(in srgb, var(--accent) 22%, transparent);
     color: var(--text);
+  }
+  /* live span preview while dragging — lighter than a committed selection */
+  .day.in-range {
+    background: color-mix(in srgb, var(--accent) 13%, transparent);
+    color: var(--text);
+  }
+  /* deselect drag: dim the span and strike it so removal reads clearly */
+  .day.range-remove {
+    background: color-mix(in srgb, var(--faint) 14%, transparent);
+    color: var(--faint);
+    text-decoration: line-through;
+    text-decoration-color: color-mix(in srgb, var(--faint) 70%, transparent);
   }
   .ev {
     position: absolute;

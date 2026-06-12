@@ -551,6 +551,8 @@
               if (selectedDays.has(iso)) selectedDays.delete(iso);
               else selectedDays.add(iso);
             }}
+            onRange={(isos, _dates, additive) =>
+              isos.forEach((d) => (additive ? selectedDays.add(d) : selectedDays.delete(d)))}
             onClear={() => selectedDays.clear()}
           />
         </div>
