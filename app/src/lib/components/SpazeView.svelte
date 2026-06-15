@@ -1,7 +1,13 @@
 <script lang="ts">
-  // Mock "spaze" view — a desktop take on the spaze TUI chat (terminal-first
-  // team chat, GitHub identity, inline #note / #todo capture). Data is mock.
+  // "spaze" view — a desktop take on the spaze TUI chat (terminal-first team
+  // chat, GitHub identity, inline #note / #todo capture). Rooms and members are
+  // real (one room per airwavez repo, member counts from contributors) and the
+  // composer posts as your real GitHub identity. Live message sync has no
+  // backend yet, so messages you send stay local this session.
+  import { onMount } from "svelte";
   import Avatar from "$lib/components/Avatar.svelte";
+  import { githubRepos, githubContributors, githubUser, GITHUB_ORG } from "$lib/ipc";
+  import type { GhRepo } from "$lib/types";
   import { Hash, Send, Users } from "lucide-svelte";
 
   let { active = true }: { active?: boolean } = $props();
@@ -10,48 +16,59 @@
     author: string;
     time: string;
     text: string;
+    avatar?: string | null;
   }
 
-  const ROOMS = [
-    { key: "general", name: "general", unread: 0 },
-    { key: "notez2", name: "notez2", unread: 3 },
-    { key: "spaze", name: "spaze", unread: 0 },
-    { key: "repoz", name: "repoz", unread: 1 },
-    { key: "random", name: "random", unread: 0 },
-  ];
-  const MEMBERS: Record<string, number> = { general: 6, notez2: 4, spaze: 3, repoz: 2, random: 6 };
+  let repos = $state<GhRepo[]>([]);
+  let memberCount = $state<Record<string, number>>({});
+  let me = $state<{ login: string; avatar: string | null }>({ login: "you", avatar: null });
+  let activeRoom = $state("");
+  let threads = $state<Record<string, Msg[]>>({});
+  let loading = $state(true);
 
-  let activeRoom = $state("notez2");
-
-  let threads = $state<Record<string, Msg[]>>({
-    general: [
-      { author: "nora", time: "08:30", text: "morning all ☕" },
-      { author: "kai", time: "08:34", text: "self-hosting spaze in 10 min still the goal? #note deploy guide" },
-    ],
-    notez2: [
-      { author: "alex", time: "09:41", text: "pushed the dedupe fix — collect_all was double-walking personal/" },
-      { author: "you", time: "09:43", text: "huge. that crash was brutal. #todo verify on the laptop too" },
-      { author: "mira", time: "09:50", text: "inspector now shows contributors + cross-project counts, looks clean" },
-      { author: "alex", time: "10:02", text: "next: @date encoding for calendar so it round-trips through the CLI" },
-    ],
-    spaze: [
-      { author: "you", time: "11:12", text: "Phase 1.D shipped — sidebar nav with hjkl + Enter" },
-      { author: "sam", time: "11:15", text: "GitHub device-flow auth is the unlock for identity everywhere" },
-    ],
-    repoz: [
-      { author: "sam", time: "14:20", text: "repoz now scans all repos for dirty trees + unpushed commits" },
-    ],
-    random: [{ author: "nora", time: "16:00", text: "ratatui vs svelte, fight 🥊" }],
-  });
+  async function load() {
+    try {
+      const [rs, u] = await Promise.all([githubRepos(), githubUser().catch(() => null)]);
+      repos = rs;
+      if (u) me = { login: u.login, avatar: u.avatar_url };
+      if (rs.length && !activeRoom) activeRoom = rs[0].name;
+      // Seed each room with the repo's real description as a pinned intro line.
+      const seeded: Record<string, Msg[]> = {};
+      for (const r of rs) {
+        const desc = r.description?.trim();
+        seeded[r.name] = desc
+          ? [{ author: me.login, time: "", text: desc, avatar: me.avatar }]
+          : [];
+      }
+      threads = seeded;
+      // Real per-repo member counts (contributors), fanned out in parallel.
+      const counts: Record<string, number> = {};
+      await Promise.all(
+        rs.map(async (r) => {
+          try {
+            counts[r.name] = (await githubContributors(r.name)).length;
+          } catch {
+            counts[r.name] = 0;
+          }
+        })
+      );
+      memberCount = counts;
+    } catch {
+      /* offline: leave rooms empty */
+    } finally {
+      loading = false;
+    }
+  }
+  onMount(load);
 
   let draft = $state("");
 
   function send() {
     const t = draft.trim();
-    if (!t) return;
+    if (!t || !activeRoom) return;
     threads[activeRoom] = [
       ...(threads[activeRoom] ?? []),
-      { author: "you", time: "now", text: t },
+      { author: me.login, time: "now", text: t, avatar: me.avatar },
     ];
     draft = "";
   }
@@ -69,30 +86,33 @@
   <aside class="rooms">
     <div class="server">
       <span class="server-name">spaze</span>
-      <span class="server-host">self-hosted</span>
+      <span class="server-host">{GITHUB_ORG}</span>
     </div>
     <div class="room-label">Rooms</div>
-    {#each ROOMS as r (r.key)}
-      <button class="room" class:active={activeRoom === r.key} onclick={() => (activeRoom = r.key)}>
+    {#each repos as r (r.name)}
+      <button class="room" class:active={activeRoom === r.name} onclick={() => (activeRoom = r.name)}>
         <Hash size={14} />
         <span class="room-name">{r.name}</span>
-        {#if r.unread > 0}<span class="badge">{r.unread}</span>{/if}
+        {#if memberCount[r.name]}<span class="badge">{memberCount[r.name]}</span>{/if}
       </button>
     {/each}
+    {#if repos.length === 0}
+      <div class="room-empty">{loading ? "loading…" : "no repos"}</div>
+    {/if}
   </aside>
 
   <div class="main">
     <header class="room-head">
       <Hash size={16} />
-      <span class="head-name">{activeRoom}</span>
+      <span class="head-name">{activeRoom || "—"}</span>
       <div class="spacer"></div>
-      <span class="members"><Users size={13} /> {MEMBERS[activeRoom] ?? 0}</span>
+      <span class="members"><Users size={13} /> {memberCount[activeRoom] ?? 0}</span>
     </header>
 
     <div class="timeline">
       {#each threads[activeRoom] ?? [] as m, i (i)}
         <div class="msg">
-          <Avatar name={m.author} size={28} />
+          <Avatar name={m.author} src={m.avatar} size={28} />
           <div class="msg-body">
             <div class="msg-head">
               <span class="author">{m.author}</span>
@@ -127,7 +147,7 @@
       <span class="sb-path"># {activeRoom}</span>
       <div class="sb-spacer"></div>
       <span class="sb-count">
-        {(threads[activeRoom] ?? []).length} messages · {MEMBERS[activeRoom] ?? 0} members · mock
+        {(threads[activeRoom] ?? []).length} messages · {memberCount[activeRoom] ?? 0} members · local
       </span>
     </div>
   </div>
@@ -169,6 +189,11 @@
     letter-spacing: 0.06em;
     color: var(--faint);
     padding: 0.25rem 0.5rem;
+  }
+  .room-empty {
+    padding: 0.4rem 0.5rem;
+    font-size: 0.72rem;
+    color: var(--faint);
   }
   .room {
     display: flex;
