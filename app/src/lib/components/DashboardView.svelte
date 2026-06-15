@@ -8,13 +8,24 @@
   import Avatar from "$lib/components/Avatar.svelte";
   import MachineAvatar from "$lib/components/MachineAvatar.svelte";
   import WeatherWidget from "$lib/components/WeatherWidget.svelte";
-  import { hashStr } from "$lib/mock";
+  import { hashStr, relativeTime } from "$lib/mock";
+  import {
+    githubUser,
+    githubRepos,
+    githubCommits,
+    githubIssues,
+    githubContributors,
+    listNotes,
+    loadTodoBoard,
+    GITHUB_ORG,
+  } from "$lib/ipc";
+  import type { GhRepo, GhCommit, GhIssue, GhContributor, GhUser } from "$lib/types";
   import {
     CloudSun,
     GitCommitHorizontal,
     FolderGit2,
     Users,
-    Megaphone,
+    CircleDot,
     FileText,
     ListChecks,
     KanbanSquare,
@@ -41,15 +52,86 @@
     now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })
   );
 
+  // --- real data, loaded from the airwavez org via the authed gh CLI -------
+  let user = $state<GhUser | null>(null);
+  let repos = $state<GhRepo[]>([]);
+  let commits = $state<GhCommit[]>([]);
+  let issues = $state<GhIssue[]>([]);
+  let contributors = $state<GhContributor[]>([]);
+  let noteCount = $state(0);
+  let todoOpen = $state(0);
+  let todoDone = $state(0);
+  let loading = $state(true);
+  let loadError = $state<string | null>(null);
+
+  async function loadAll() {
+    loading = true;
+    loadError = null;
+    try {
+      const [u, r] = await Promise.all([githubUser(), githubRepos()]);
+      user = u;
+      repos = r;
+      const names = r.map((x) => x.name);
+      // commits (deep enough to fill the heatmap), issues, and per-repo
+      // contributors all fan out in parallel.
+      const [c, iss, ...contribLists] = await Promise.all([
+        githubCommits(names, 100),
+        githubIssues(names),
+        ...names.map((n) => githubContributors(n)),
+      ]);
+      commits = c;
+      issues = iss;
+      const cmap = new Map<string, GhContributor>();
+      for (const list of contribLists as GhContributor[][]) {
+        for (const person of list) {
+          const existing = cmap.get(person.login);
+          if (existing) existing.contributions += person.contributions;
+          else cmap.set(person.login, { ...person });
+        }
+      }
+      contributors = [...cmap.values()].sort((a, b) => b.contributions - a.contributions);
+    } catch (e) {
+      loadError = String(e);
+    } finally {
+      loading = false;
+    }
+    // Local notez stats, independent of GitHub (best-effort).
+    try {
+      noteCount = (await listNotes()).length;
+    } catch {
+      /* ignore */
+    }
+    try {
+      const board = await loadTodoBoard();
+      const tasks = board.items.filter((t) => !t.is_header);
+      todoOpen = tasks.filter((t) => t.state !== "checked").length;
+      todoDone = tasks.filter((t) => t.state === "checked").length;
+    } catch {
+      /* ignore */
+    }
+  }
+
+  onMount(loadAll);
+
+  const firstName = $derived(user ? (user.name || user.login).split(" ")[0] : "you");
+  /** Relative time from an ISO-8601 timestamp. */
+  const isoRel = (iso: string) => (iso ? relativeTime(Date.parse(iso) / 1000) : "");
+
   function spark(seed: string): number[] {
     return Array.from({ length: 9 }, (_, i) => 22 + (hashStr(seed + ":" + i) % 78));
   }
-  const STATS = [
-    { label: "Notes", value: 128, trend: "+6 this week", icon: FileText, color: "var(--accent-local)" },
-    { label: "Todos", value: 47, trend: "12 done", icon: ListChecks, color: "var(--accent-public)" },
-    { label: "Tickets", value: 12, trend: "3 in review", icon: KanbanSquare, color: "var(--accent-personal)" },
-    { label: "Commits", value: 142, trend: "this quarter", icon: GitCommitHorizontal, color: "var(--accent-global)" },
-  ];
+  let stats = $derived([
+    { label: "Notes", value: noteCount, trend: "all scopes", icon: FileText, color: "var(--accent-local)" },
+    { label: "Todos", value: todoOpen, trend: `${todoDone} done`, icon: ListChecks, color: "var(--accent-public)" },
+    {
+      label: "Issues",
+      value: issues.filter((i) => i.state === "open").length,
+      trend: `${issues.length} total`,
+      icon: KanbanSquare,
+      color: "var(--accent-personal)",
+    },
+    { label: "Commits", value: commits.length, trend: `${repos.length} repos`, icon: GitCommitHorizontal, color: "var(--accent-global)" },
+  ]);
 
   const WD = ["M", "T", "W", "T", "F", "S", "S"];
   let monthName = $derived(now.toLocaleDateString([], { month: "long", year: "numeric" }));
@@ -65,128 +147,107 @@
   });
   let todayNum = $derived(now.getDate());
 
-  const grid: number[][] = Array.from({ length: 16 }, (_, w) =>
-    Array.from({ length: 7 }, (_, d) => {
-      const v = hashStr(`${w}:${d}`) % 11;
-      return v > 8 ? 4 : v > 6 ? 3 : v > 4 ? 2 : v > 1 ? 1 : 0;
-    })
-  );
-
-  const REPOS = [
-    { name: "notez2", status: "dirty", detail: "3 uncommitted" },
-    { name: "spaze", status: "ahead", detail: "2 ahead" },
-    { name: "repoz", status: "clean", detail: "up to date" },
-    { name: "epoz", status: "clean", detail: "up to date" },
-  ];
-  const STATUS_COLOR: Record<string, string> = {
-    clean: "var(--accent-public)",
-    dirty: "var(--accent-global)",
-    ahead: "var(--accent-local)",
-  };
-  const REPO_COLOR: Record<string, string> = {
-    notez2: "var(--accent-personal)",
-    spaze: "var(--accent-local)",
-    repoz: "var(--accent-public)",
-    epoz: "var(--accent-global)",
-  };
-  // Per-repo metadata for the repoz-style commit listing: working-tree path
-  // and how many commits the local branch trails its upstream.
-  const REPO_META: Record<string, { path: string; behind: number }> = {
-    notez2: { path: "~/Repos/notez2", behind: 11 },
-    spaze: { path: "~/Repos/spaze", behind: 2 },
-    repoz: { path: "~/Repos/repoz", behind: 0 },
-    epoz: { path: "~/Repos/epoz", behind: 1 },
-  };
-
-  const TEAM = [
-    { name: "you", online: true },
-    { name: "alex", online: true },
-    { name: "mira", online: false },
-    { name: "sam", online: true },
-    { name: "nora", online: false },
-    { name: "kai", online: true },
-  ];
-
-  const NEWS = [
-    { title: "notez2 desktop alpha is live", time: "2h", tag: "release" },
-    { title: "Spaze self-hosting guide published", time: "1d", tag: "docs" },
-    { title: "All-hands Friday 15:00", time: "2d", tag: "team" },
-  ];
-
-  const COMMITS = [
-    { hash: "a3f9c2e", msg: "fix(core): stop personal notes duplicating into global scope", repo: "notez2", by: "you", time: "2h" },
-    { hash: "6f68822", msg: "feat(app): unify toolbars, footer indicators, + button", repo: "notez2", by: "alex", time: "5h" },
-    { hash: "cfc5eae", msg: "feat(app): contextual inspector with contributors", repo: "notez2", by: "you", time: "7h" },
-    { hash: "1b4d09a", msg: "feat(app): split preview, resizable panes, vim mode", repo: "notez2", by: "mira", time: "1d" },
-    { hash: "9c2a7f1", msg: "feat(client): sidebar nav with hjkl + Enter", repo: "spaze", by: "sam", time: "1d" },
-    { hash: "4e7b1d8", msg: "feat(server): GitHub device-flow auth", repo: "spaze", by: "you", time: "1d" },
-    { hash: "e8b3d40", msg: "chore: broad dirty-tree scan across repos", repo: "repoz", by: "sam", time: "2d" },
-    { hash: "7a1f5c3", msg: "feat: epoz git-handling wrapper skeleton", repo: "epoz", by: "kai", time: "2d" },
-    { hash: "b2d6e90", msg: "docs(design): calendar + ticket roadmap", repo: "notez2", by: "you", time: "2d" },
-    { hash: "3c9a0f7", msg: "fix(todoz): tree connectors off-by-one", repo: "notez2", by: "nora", time: "3d" },
-    { hash: "5f8c12b", msg: "feat(app): markdown read view + code highlighting", repo: "notez2", by: "alex", time: "3d" },
-    { hash: "d41a6e2", msg: "refactor: split notez2 into a cargo workspace", repo: "notez2", by: "you", time: "4d" },
-    { hash: "8b3f7a0", msg: "feat(commands): slash command parser", repo: "spaze", by: "mira", time: "4d" },
-    { hash: "2e5d9c4", msg: "test: todoz parse/serialize round-trip", repo: "notez2", by: "sam", time: "5d" },
-    { hash: "f07b3a1", msg: "chore(repoz): color unpushed-commit summary", repo: "repoz", by: "kai", time: "5d" },
-    { hash: "6d2c8e5", msg: "feat(app): projects, sync, migration, note tags", repo: "notez2", by: "you", time: "6d" },
-    { hash: "a9e4b07", msg: "feat(storage): SQLite FTS5 search", repo: "spaze", by: "alex", time: "1w" },
-    { hash: "c13f6d8", msg: "docs: README + scope model", repo: "notez2", by: "nora", time: "1w" },
-  ];
-
-  type Commit = (typeof COMMITS)[number] & { add: number; del: number };
-  type CommitGroup = { repo: string; path: string; behind: number; commits: Commit[] };
-  // Derive a stable +added/−removed churn for each commit from its hash so the
-  // repoz-style diff stats stay constant across renders without real git data.
-  function diffStat(hash: string): { add: number; del: number } {
-    const add = 1 + (hashStr(hash + ":add") % 420);
-    // Roughly a third of commits are pure additions (no deletions), like the CLI.
-    const del = hashStr(hash) % 3 === 0 ? 0 : 1 + (hashStr(hash + ":del") % 260);
-    return { add, del };
+  const WEEKS = 16;
+  function isoDay(d: Date): string {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   }
-  const COMMIT_GROUPS: CommitGroup[] = (() => {
-    const order: string[] = [];
-    const map: Record<string, Commit[]> = {};
-    for (const c of COMMITS) {
-      if (!map[c.repo]) {
-        map[c.repo] = [];
-        order.push(c.repo);
-      }
-      map[c.repo].push({ ...c, ...diffStat(c.hash) });
+  // Real git-activity heatmap: WEEKS columns (oldest left), each Mon..Sun,
+  // bucketed from real commit dates into 5 intensity levels.
+  let grid = $state<number[][]>([]);
+  let streak = $state(0);
+  $effect(() => {
+    const counts = new Map<string, number>();
+    for (const c of commits) {
+      const day = c.date.slice(0, 10);
+      if (day) counts.set(day, (counts.get(day) ?? 0) + 1);
     }
-    return order.map((repo) => ({
-      repo,
-      path: REPO_META[repo]?.path ?? `~/Repos/${repo}`,
-      behind: REPO_META[repo]?.behind ?? 0,
-      commits: map[repo],
-    }));
-  })();
+    const today = new Date();
+    const dow = (today.getDay() + 6) % 7; // Mon = 0
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - dow);
+    const out: number[][] = [];
+    for (let w = WEEKS - 1; w >= 0; w--) {
+      const col: number[] = [];
+      for (let d = 0; d < 7; d++) {
+        const cell = new Date(monday);
+        cell.setDate(monday.getDate() - w * 7 + d);
+        const n = cell > today ? -1 : counts.get(isoDay(cell)) ?? 0;
+        col.push(n < 0 ? 0 : n === 0 ? 0 : n >= 6 ? 4 : n >= 4 ? 3 : n >= 2 ? 2 : 1);
+      }
+      out.push(col);
+    }
+    grid = out;
+    // Current streak: consecutive days with >=1 commit ending today (or
+    // yesterday, so an idle morning doesn't zero a live streak).
+    let n = 0;
+    const probe = new Date();
+    if (!counts.has(isoDay(probe))) probe.setDate(probe.getDate() - 1);
+    while (counts.has(isoDay(probe))) {
+      n++;
+      probe.setDate(probe.getDate() - 1);
+    }
+    streak = n;
+  });
+
+  // Accent color per repo, stable across renders.
+  const REPO_ACCENTS = [
+    "var(--accent-personal)",
+    "var(--accent-local)",
+    "var(--accent-public)",
+    "var(--accent-global)",
+  ];
+  const repoColor = (name: string) => REPO_ACCENTS[hashStr(name) % REPO_ACCENTS.length];
 
   // --- Project visibility (sidebar) --------------------------------------
-  // Which projects are visualized in the dashboard, persisted across sessions.
-  const ALL_PROJECTS = ["notez2", "spaze", "repoz", "epoz"];
-  const PROJ_KEY = "notez-dash-projects-v1";
-  function loadSelectedProjects(): string[] {
-    try {
-      const s = localStorage.getItem(PROJ_KEY);
-      if (s) return JSON.parse(s);
-    } catch {
-      /* ignore */
-    }
-    return [...ALL_PROJECTS];
-  }
-  const selectedProjects = new SvelteSet<string>(loadSelectedProjects());
+  // Which org repos are visualized, persisted across sessions. Defaults to all
+  // repos the first time, then remembers the user's selection.
+  const PROJ_KEY = "notez-dash-projects-v2";
+  const selectedProjects = new SvelteSet<string>();
+  let projInit = false;
   $effect(() => {
-    localStorage.setItem(PROJ_KEY, JSON.stringify([...selectedProjects]));
+    if (projInit || repos.length === 0) return;
+    projInit = true;
+    try {
+      const stored = localStorage.getItem(PROJ_KEY);
+      const list: string[] = stored ? JSON.parse(stored) : repos.map((r) => r.name);
+      for (const p of list) selectedProjects.add(p);
+    } catch {
+      for (const r of repos) selectedProjects.add(r.name);
+    }
+  });
+  $effect(() => {
+    if (projInit) localStorage.setItem(PROJ_KEY, JSON.stringify([...selectedProjects]));
   });
   function toggleProject(p: string) {
     if (selectedProjects.has(p)) selectedProjects.delete(p);
     else selectedProjects.add(p);
   }
 
-  let visibleCommitGroups = $derived(COMMIT_GROUPS.filter((g) => selectedProjects.has(g.repo)));
-  let visibleRepos = $derived(REPOS.filter((r) => selectedProjects.has(r.name)));
-  let totalBehind = $derived(visibleCommitGroups.reduce((n, g) => n + g.behind, 0));
+  let visibleRepos = $derived(repos.filter((r) => selectedProjects.has(r.name)));
+  let openIssues = $derived(
+    issues.filter((i) => i.state === "open" && selectedProjects.has(i.repo))
+  );
+  // Real commits grouped by repo (newest first), capped per repo for the feed.
+  let visibleCommitGroups = $derived.by(() => {
+    const order: string[] = [];
+    const map = new Map<string, GhCommit[]>();
+    for (const c of commits) {
+      if (!selectedProjects.has(c.repo)) continue;
+      if (!map.has(c.repo)) {
+        map.set(c.repo, []);
+        order.push(c.repo);
+      }
+      const arr = map.get(c.repo)!;
+      if (arr.length < 6) arr.push(c);
+    }
+    return order.map((repo) => ({
+      repo,
+      path: `~/repos/${repo}`,
+      open: issues.filter((i) => i.repo === repo && i.state === "open").length,
+      commits: map.get(repo) ?? [],
+    }));
+  });
+  let totalCommits = $derived(visibleCommitGroups.reduce((n, g) => n + g.commits.length, 0));
 
   // --- Gridstack ---------------------------------------------------------
   // Spread the gs-* layout attributes via a helper (keeps them off the typed
@@ -265,13 +326,16 @@
       <span class="brand-name">home</span>
     </div>
     <nav class="group">
-      <div class="group-label">Projects</div>
-      {#each ALL_PROJECTS as p (p)}
-        <button class="item" class:active={selectedProjects.has(p)} onclick={() => toggleProject(p)}>
-          <span class="cbox" class:on={selectedProjects.has(p)}></span>
-          <span class="item-label">{p}</span>
+      <div class="group-label">{GITHUB_ORG}</div>
+      {#each repos as r (r.name)}
+        <button class="item" class:active={selectedProjects.has(r.name)} onclick={() => toggleProject(r.name)}>
+          <span class="cbox" class:on={selectedProjects.has(r.name)}></span>
+          <span class="item-label">{r.name}</span>
         </button>
       {/each}
+      {#if repos.length === 0}
+        <div class="side-empty">{loading ? "loading…" : "no repos"}</div>
+      {/if}
     </nav>
   </aside>
 
@@ -279,8 +343,8 @@
     <div class="inner">
       <header class="hero">
       <div class="greet">
-        <div class="hello">{greeting}, you</div>
-        <div class="date">{dateStr}</div>
+        <div class="hello">{greeting}, {firstName}</div>
+        <div class="date">{dateStr}{#if loadError} · <span class="err">offline</span>{/if}</div>
       </div>
       <div class="clock">{clock}</div>
       <button class="reset" onclick={resetLayout} title="Reset widget layout" aria-label="Reset layout">
@@ -289,7 +353,7 @@
     </header>
 
     <div class="grid-stack" bind:this={gridEl}>
-      {#each STATS as s, i (s.label)}
+      {#each stats as s, i (s.label)}
         <div
           class="grid-stack-item"
           {...gs({ id: `tile-${s.label}`, x: i * 3, y: 0, w: 3, h: 1, minW: 2, minH: 1, maxH: 2 })}
@@ -330,7 +394,7 @@
             {/each}
           </div>
           <div class="git-foot">
-            <span><Flame size={12} /> 7-day streak</span>
+            <span><Flame size={12} /> {streak}-day streak</span>
             <span class="legend">Less <span class="cell lvl1"></span><span class="cell lvl2"></span><span class="cell lvl3"></span><span class="cell lvl4"></span> More</span>
           </div>
         </div>
@@ -349,37 +413,48 @@
           <ul class="list">
             {#each visibleRepos as r (r.name)}
               <li>
-                <span class="sdot" style="--c:{STATUS_COLOR[r.status]}"></span>
+                <span class="sdot" style="--c:{repoColor(r.name)}"></span>
                 <span class="li-name">{r.name}</span>
-                <span class="li-detail">{r.detail}</span>
+                <span class="li-detail">{r.language ?? "docs"} · {isoRel(r.pushed_at)}</span>
               </li>
             {/each}
+            {#if visibleRepos.length === 0}
+              <li class="empty-row">{loading ? "loading…" : "no repos selected"}</li>
+            {/if}
           </ul>
         </div>
       </div>
 
       <div class="grid-stack-item" {...gs({ id: "news", x: 4, y: 4, w: 4, h: 3, minW: 2, minH: 2 })}>
         <div class="grid-stack-item-content card">
-          <div class="card-head"><Megaphone size={13} /> Company news</div>
+          <div class="card-head"><CircleDot size={13} /> Open issues</div>
           <ul class="list">
-            {#each NEWS as n (n.title)}
+            {#each openIssues.slice(0, 7) as it (it.repo + it.number)}
               <li class="news">
-                <span class="news-tag">{n.tag}</span>
-                <span class="li-name">{n.title}</span>
-                <span class="li-detail">{n.time}</span>
+                <span class="news-tag">{it.repo}</span>
+                <span class="li-name">{it.title}</span>
+                <span class="li-detail">#{it.number}</span>
               </li>
             {/each}
+            {#if openIssues.length === 0}
+              <li class="empty-row">{loading ? "loading…" : "no open issues"}</li>
+            {/if}
           </ul>
         </div>
       </div>
 
       <div class="grid-stack-item" {...gs({ id: "team", x: 8, y: 4, w: 4, h: 3, minW: 2, minH: 2 })}>
         <div class="grid-stack-item-content card">
-          <div class="card-head"><Users size={13} /> Team</div>
+          <div class="card-head"><Users size={13} /> Contributors</div>
           <div class="team">
-            {#each TEAM as m (m.name)}
-              <span class="av" class:online={m.online} title={m.name}><Avatar name={m.name} size={26} /></span>
+            {#each contributors as m (m.login)}
+              <span class="av" title={`${m.login} · ${m.contributions} commits`}>
+                <Avatar name={m.login} src={m.avatar_url} size={26} />
+              </span>
             {/each}
+            {#if contributors.length === 0}
+              <span class="empty-row">{loading ? "loading…" : "no contributors"}</span>
+            {/if}
           </div>
         </div>
       </div>
@@ -391,31 +466,33 @@
             {#each visibleCommitGroups as g (g.repo)}
               <div class="repo-block">
                 <div class="repo-line">
-                  <span class="proj-dot" style="--c:{REPO_COLOR[g.repo] ?? 'var(--subtext)'}"></span>
+                  <span class="proj-dot" style="--c:{repoColor(g.repo)}"></span>
                   <span class="repo-name">{g.repo}</span>
                   <span class="repo-path">{g.path}</span>
                   <span class="leader"></span>
-                  {#if g.behind > 0}
-                    <span class="behind">{g.behind} behind</span>
+                  {#if g.open > 0}
+                    <span class="behind">{g.open} open</span>
                   {:else}
-                    <span class="clean">up to date</span>
+                    <span class="clean">no issues</span>
                   {/if}
                 </div>
-                {#each g.commits as c (c.hash)}
+                {#each g.commits as c (c.sha)}
                   <div class="crow">
-                    <span class="hash">{c.hash}</span>
-                    <span class="cmsg">{c.msg}</span>
+                    <span class="hash">{c.sha.slice(0, 7)}</span>
+                    <span class="cmsg">{c.message}</span>
                     <span class="leader"></span>
-                    <span class="stats">
-                      <span class="add">+{c.add}</span>
-                      {#if c.del > 0}<span class="del">−{c.del}</span>{/if}
+                    <span class="ctime">{isoRel(c.date)}</span>
+                    <span class="cauthor">
+                      <Avatar name={c.author_login ?? c.author} src={c.avatar_url} size={16} />
                     </span>
-                    <span class="author">{c.by}</span>
                   </div>
                 {/each}
               </div>
             {/each}
-            <div class="repoz-foot">{totalBehind} behind</div>
+            {#if visibleCommitGroups.length === 0}
+              <div class="empty-row">{loading ? "loading commits…" : loadError ? "could not reach GitHub" : "no commits"}</div>
+            {/if}
+            <div class="repoz-foot">{totalCommits} commits shown</div>
           </div>
         </div>
       </div>
@@ -989,29 +1066,34 @@
     height: 0.85em;
     border-bottom: 1px dotted rgba(255, 255, 255, 0.18);
   }
-  .stats {
+  .ctime {
     flex-shrink: 0;
-    width: 6.5em;
     text-align: right;
-    font-variant-numeric: tabular-nums;
-    display: flex;
-    justify-content: flex-end;
-    gap: 0.5rem;
-  }
-  .add {
-    color: var(--accent-public);
-  }
-  .del {
-    color: var(--danger);
-  }
-  .author {
-    flex-shrink: 0;
-    width: 4.5em;
     color: var(--faint);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .cauthor {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
   }
   .repoz-foot {
     padding-top: 0.45rem;
     border-top: 1px solid var(--border);
+    color: var(--accent-global);
+  }
+  .empty-row {
+    color: var(--faint);
+    font-size: 0.78rem;
+    padding: 0.4rem 0;
+  }
+  .side-empty {
+    color: var(--faint);
+    font-size: 0.72rem;
+    padding: 0.25rem 0.5rem;
+  }
+  .err {
     color: var(--accent-global);
   }
 </style>

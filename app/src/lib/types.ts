@@ -51,6 +51,56 @@ export interface TodoBoard {
   items: TodoTask[];
 }
 
+// --- GitHub (real org data via the authed gh CLI) ---
+
+export interface GhRepo {
+  name: string;
+  description: string;
+  language: string | null;
+  pushed_at: string;
+  open_issues: number;
+  url: string;
+  is_private: boolean;
+}
+
+export interface GhCommit {
+  sha: string;
+  repo: string;
+  message: string;
+  author: string;
+  author_login: string | null;
+  avatar_url: string | null;
+  date: string;
+}
+
+export interface GhIssue {
+  number: number;
+  repo: string;
+  title: string;
+  body: string;
+  state: string;
+  labels: string[];
+  assignees: string[];
+  author: string;
+  avatar_url: string | null;
+  url: string;
+  created_at: string;
+  updated_at: string;
+  points: number | null;
+}
+
+export interface GhUser {
+  login: string;
+  name: string;
+  avatar_url: string;
+}
+
+export interface GhContributor {
+  login: string;
+  avatar_url: string;
+  contributions: number;
+}
+
 /** The 5 tag flags, aligned 1:1 with notez-core::tags::FLAG_DEFS. */
 export const TAG_DEFS = [
   { bit: 1 << 0, key: "important", label: "important", color: "#f38ba8" },

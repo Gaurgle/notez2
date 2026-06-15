@@ -1,7 +1,11 @@
 <script lang="ts">
   import { hashStr } from "$lib/mock";
 
-  let { name, size = 18 }: { name: string; size?: number } = $props();
+  let {
+    name,
+    size = 18,
+    src = null,
+  }: { name: string; size?: number; src?: string | null } = $props();
 
   const COLORS = [
     "#cba6f7",
@@ -56,7 +60,11 @@
   onmouseleave={leave}
   style="--ac:{color}; width:{size}px; height:{size}px; font-size:{Math.round(size * 0.46)}px"
 >
-  {name[0]?.toUpperCase() ?? "?"}
+  {#if src}
+    <img class="avatar-img" {src} alt={name} width={size} height={size} />
+  {:else}
+    {name[0]?.toUpperCase() ?? "?"}
+  {/if}
 </span>
 
 {#if show}
@@ -74,6 +82,13 @@
     color: var(--ac);
     font-weight: 700;
     border: 1px solid var(--base);
+    overflow: hidden;
+  }
+  .avatar-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
   }
   /* portaled to <body>, so it must be a global style */
   :global(.avatar-tip) {

@@ -3,6 +3,7 @@
 
 mod commands;
 mod dto;
+mod github;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -56,6 +57,11 @@ pub fn run() {
             commands::move_todo,
             commands::collapse_all,
             commands::create_category,
+            github::github_user,
+            github::github_repos,
+            github::github_commits,
+            github::github_issues,
+            github::github_contributors,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

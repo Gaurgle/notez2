@@ -1,5 +1,16 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { NoteListItem, PlanItem, ProjectInfo, Scope, TodoBoard } from "./types";
+import type {
+  GhCommit,
+  GhContributor,
+  GhIssue,
+  GhRepo,
+  GhUser,
+  NoteListItem,
+  PlanItem,
+  ProjectInfo,
+  Scope,
+  TodoBoard,
+} from "./types";
 
 /** Every note across all four scopes (the headline aggregate view). */
 export const listNotes = () => invoke<NoteListItem[]>("list_notes");
@@ -64,3 +75,18 @@ export const machineName = () => invoke<string>("machine_name");
 
 export const migratePreview = () => invoke<PlanItem[]>("migrate_preview");
 export const migrateApply = () => invoke<string[]>("migrate_apply");
+
+// --- GitHub (real org data via the authed gh CLI) ---
+
+/** The default org backing the desktop views. */
+export const GITHUB_ORG = "airwavez";
+
+export const githubUser = () => invoke<GhUser>("github_user");
+export const githubRepos = (org: string = GITHUB_ORG) =>
+  invoke<GhRepo[]>("github_repos", { org });
+export const githubCommits = (repos: string[], limit = 10, org: string = GITHUB_ORG) =>
+  invoke<GhCommit[]>("github_commits", { org, repos, limit });
+export const githubIssues = (repos: string[], org: string = GITHUB_ORG) =>
+  invoke<GhIssue[]>("github_issues", { org, repos });
+export const githubContributors = (repo: string, org: string = GITHUB_ORG) =>
+  invoke<GhContributor[]>("github_contributors", { org, repo });
