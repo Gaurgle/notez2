@@ -13,11 +13,12 @@
     githubCommits,
     githubIssues,
     githubContributors,
+    githubContributionCalendar,
     listNotes,
     loadTodoBoard,
   } from "$lib/ipc";
   import { repoStore } from "$lib/repos.svelte";
-  import type { GhCommit, GhIssue, GhContributor, GhUser } from "$lib/types";
+  import type { GhCommit, GhIssue, GhContributor, GhUser, GhDay } from "$lib/types";
   import {
     CloudSun,
     GitCommitHorizontal,
@@ -83,6 +84,7 @@
   let noteCount = $state(0);
   let todoOpen = $state(0);
   let todoDone = $state(0);
+  let calendarDays = $state<GhDay[]>([]); // repo-independent activity (green squares)
   let loading = $state(true);
   let loadError = $state<string | null>(null);
   let fetchToken = 0;
@@ -93,6 +95,11 @@
     } catch {
       /* offline: identity stays "you" */
     }
+    // The activity heatmap is the user's whole contribution calendar — fetched
+    // once, independent of which repos are selected.
+    githubContributionCalendar()
+      .then((days) => (calendarDays = days))
+      .catch(() => {});
     await repoStore.ensure(user?.login);
     // Local notez stats, independent of GitHub (best-effort).
     try {
@@ -110,12 +117,15 @@
     }
   });
 
-  // Re-fetch commits/issues/contributors whenever the active selection changes.
+  // Re-fetch commits/issues/contributors whenever the active selection changes,
+  // debounced so rapid toggling doesn't fire a fetch storm of gh subprocesses.
   $effect(() => {
     const names = repoStore.activeNames;
     if (repoStore.loading) return;
+    loading = true; // reflect the pending fetch immediately
     const token = ++fetchToken;
-    loadActive(names, token);
+    const timer = setTimeout(() => loadActive(names, token), 400);
+    return () => clearTimeout(timer);
   });
 
   async function loadActive(names: string[], token: number) {
@@ -129,8 +139,10 @@
       return;
     }
     try {
+      // Only the recent-commits feed needs commits now (the heatmap uses the
+      // contribution calendar), so a shallow per-repo fetch is plenty.
       const [c, iss, ...contribLists] = await Promise.all([
-        githubCommits(names, 100),
+        githubCommits(names, 15),
         githubIssues(names),
         ...names.map((n) => githubContributors(n)),
       ]);
@@ -200,16 +212,14 @@
   function isoDay(d: Date): string {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   }
-  // Real git-activity heatmap: WEEKS columns (oldest left), each Mon..Sun,
-  // bucketed from real commit dates into 5 intensity levels.
+  // Git-activity heatmap: WEEKS columns (oldest left), each Mon..Sun, built from
+  // the user's whole contribution calendar (the green squares) — repo-independent
+  // and unaffected by which repos are selected.
   let grid = $state<number[][]>([]);
   let streak = $state(0);
   $effect(() => {
     const counts = new Map<string, number>();
-    for (const c of commits) {
-      const day = c.date.slice(0, 10);
-      if (day) counts.set(day, (counts.get(day) ?? 0) + 1);
-    }
+    for (const day of calendarDays) counts.set(day.date, day.count);
     const today = new Date();
     const dow = (today.getDay() + 6) % 7; // Mon = 0
     const monday = new Date(today);
@@ -221,17 +231,18 @@
         const cell = new Date(monday);
         cell.setDate(monday.getDate() - w * 7 + d);
         const n = cell > today ? -1 : counts.get(isoDay(cell)) ?? 0;
-        col.push(n < 0 ? 0 : n === 0 ? 0 : n >= 6 ? 4 : n >= 4 ? 3 : n >= 2 ? 2 : 1);
+        // Contribution counts run higher than per-repo commits, so scale up.
+        col.push(n < 0 ? 0 : n === 0 ? 0 : n >= 16 ? 4 : n >= 8 ? 3 : n >= 3 ? 2 : 1);
       }
       out.push(col);
     }
     grid = out;
-    // Current streak: consecutive days with >=1 commit ending today (or
-    // yesterday, so an idle morning doesn't zero a live streak).
+    // Current streak: consecutive days with activity ending today (or yesterday,
+    // so an idle morning doesn't zero a live streak).
     let n = 0;
     const probe = new Date();
-    if (!counts.has(isoDay(probe))) probe.setDate(probe.getDate() - 1);
-    while (counts.has(isoDay(probe))) {
+    if (!counts.get(isoDay(probe))) probe.setDate(probe.getDate() - 1);
+    while ((counts.get(isoDay(probe)) ?? 0) > 0) {
       n++;
       probe.setDate(probe.getDate() - 1);
     }

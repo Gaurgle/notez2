@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   GhCommit,
   GhContributor,
+  GhDay,
   GhIssue,
   GhRepo,
   GhUser,
@@ -101,3 +102,7 @@ export const githubCreateIssue = (repo: string, title: string, body: string) =>
 /** Contributors to a single `owner/repo`. */
 export const githubContributors = (repo: string) =>
   invoke<GhContributor[]>("github_contributors", { repo });
+
+/** The signed-in user's contribution calendar (green squares), repo-independent. */
+export const githubContributionCalendar = () =>
+  invoke<GhDay[]>("github_contribution_calendar");

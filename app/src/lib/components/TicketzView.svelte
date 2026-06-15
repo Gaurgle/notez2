@@ -113,12 +113,15 @@
     await repoStore.ensure(me);
   });
 
-  // Reload issues whenever the active repo selection changes.
+  // Reload issues whenever the active repo selection changes, debounced so
+  // rapid toggling doesn't fire a storm of gh subprocesses.
   $effect(() => {
     const names = repoStore.activeNames;
     if (repoStore.loading) return;
+    loading = true;
     const token = ++fetchToken;
-    load(names, token);
+    const timer = setTimeout(() => load(names, token), 400);
+    return () => clearTimeout(timer);
   });
 
   async function load(names: string[], token: number) {

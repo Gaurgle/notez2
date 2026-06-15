@@ -106,6 +106,11 @@ export interface GhContributor {
   contributions: number;
 }
 
+export interface GhDay {
+  date: string;
+  count: number;
+}
+
 /** The 5 tag flags, aligned 1:1 with notez-core::tags::FLAG_DEFS. */
 export const TAG_DEFS = [
   { bit: 1 << 0, key: "important", label: "important", color: "#f38ba8" },

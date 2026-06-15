@@ -73,6 +73,13 @@ pub struct GhContributor {
     pub contributions: u32,
 }
 
+/// One day in the contribution calendar (the GitHub "green squares").
+#[derive(Serialize)]
+pub struct GhDay {
+    pub date: String,
+    pub count: u32,
+}
+
 /// Run `gh` with the given args, returning stdout on success. Falls back to the
 /// Homebrew path when `gh` is not on the app's `PATH` (the case when the app is
 /// launched from Finder rather than a terminal).
@@ -317,6 +324,36 @@ pub fn github_create_issue(repo: String, title: String, body: String) -> Result<
         .next()
         .and_then(|s| s.trim().parse::<u64>().ok())
         .ok_or_else(|| format!("could not parse new issue number from: {}", out.trim()))
+}
+
+/// The signed-in user's contribution calendar (last ~year), independent of any
+/// repo selection. This is the GitHub "green squares" activity, sourced in one
+/// GraphQL call so the dashboard heatmap stays stable as repos are toggled.
+#[tauri::command]
+pub fn github_contribution_calendar() -> Result<Vec<GhDay>, String> {
+    let query = "query { viewer { contributionsCollection { contributionCalendar { \
+                 weeks { contributionDays { date contributionCount } } } } } }";
+    let out = run_gh(&["api", "graphql", "-f", &format!("query={query}")])?;
+    let v = parse(&out)?;
+    let weeks = v
+        .pointer("/data/viewer/contributionsCollection/contributionCalendar/weeks")
+        .and_then(Value::as_array)
+        .ok_or("unexpected contribution-calendar shape")?;
+    let mut days = Vec::new();
+    for week in weeks {
+        if let Some(list) = week.get("contributionDays").and_then(Value::as_array) {
+            for d in list {
+                days.push(GhDay {
+                    date: str_field(d, "date"),
+                    count: d
+                        .get("contributionCount")
+                        .and_then(Value::as_u64)
+                        .unwrap_or(0) as u32,
+                });
+            }
+        }
+    }
+    Ok(days)
 }
 
 /// Contributors to a single `owner/repo`, most commits first.
