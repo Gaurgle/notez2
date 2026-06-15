@@ -295,6 +295,30 @@ pub fn github_issues(org: String, repos: Vec<String>) -> Result<Vec<GhIssue>, St
     Ok(issues)
 }
 
+/// Create a real issue in `org/repo`. Returns the new issue number so the
+/// caller can refetch the board. User-initiated only (the New button).
+#[tauri::command]
+pub fn github_create_issue(
+    org: String,
+    repo: String,
+    title: String,
+    body: String,
+) -> Result<u64, String> {
+    if title.trim().is_empty() {
+        return Err("issue title is empty".into());
+    }
+    let slug = format!("{org}/{repo}");
+    // gh prints the new issue's URL on success; the number is its last segment.
+    let out = run_gh(&[
+        "issue", "create", "-R", &slug, "--title", &title, "--body", &body,
+    ])?;
+    out.trim()
+        .rsplit('/')
+        .next()
+        .and_then(|s| s.trim().parse::<u64>().ok())
+        .ok_or_else(|| format!("could not parse new issue number from: {}", out.trim()))
+}
+
 /// Contributors to a single repo, most commits first.
 #[tauri::command]
 pub fn github_contributors(org: String, repo: String) -> Result<Vec<GhContributor>, String> {

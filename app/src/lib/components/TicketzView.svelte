@@ -1,11 +1,23 @@
 <script lang="ts">
-  // Mock "ticketz" board — a quick Trello-style preview. Real tickets will be
-  // repo-bound files synced via git (see DESIGN.md). Data here is placeholder.
+  // "ticketz" board, backed by real GitHub issues from the airwavez org.
+  // Issues map to lanes (closed = Done; review/in-progress labels drive the
+  // middle lanes; everything else is Backlog). Drag-to-organize is local for
+  // now; GitHub write-back for moves is a follow-up (see DESIGN.md). The New
+  // button creates a real issue.
+  import { onMount } from "svelte";
   import Avatar from "$lib/components/Avatar.svelte";
   import MachineAvatar from "$lib/components/MachineAvatar.svelte";
   import MarkdownPreview from "$lib/components/MarkdownPreview.svelte";
   import Calendar from "$lib/components/Calendar.svelte";
   import Resizer from "$lib/components/Resizer.svelte";
+  import {
+    githubRepos,
+    githubIssues,
+    githubUser,
+    githubCreateIssue,
+    GITHUB_ORG,
+  } from "$lib/ipc";
+  import type { GhIssue } from "$lib/types";
   import { Plus, Eye, Pencil, PanelRight, CalendarDays } from "lucide-svelte";
 
   let { active = true }: { active?: boolean } = $props();
@@ -21,12 +33,18 @@
   type Label = "feature" | "bug" | "design" | "chore";
   const LABELS: Label[] = ["feature", "bug", "design", "chore"];
   interface Ticket {
-    id: number;
+    id: number; // synthetic, stable for this load (the board key)
+    number: number; // real GitHub issue number
+    repo: string;
+    url: string;
     title: string;
     lane: Lane;
-    label: Label;
-    assignee: string;
-    project: string;
+    label: Label; // colored category, derived from the real labels
+    labels: string[]; // real GitHub label names
+    assignee: string; // first assignee login, else the author
+    avatar: string | null;
+    author: string;
+    project: string; // == repo (keeps the sidebar code generic)
     points: number;
     body: string;
   }
@@ -45,45 +63,85 @@
     return "var(--danger)";
   }
 
-  // Who is "in" each project — you can only assign a project's members.
-  const PROJECT_MEMBERS: Record<string, string[]> = {
-    notez2: ["you", "alex", "mira", "nora", "sam"],
-    spaze: ["you", "sam", "mira", "kai"],
-    repoz: ["sam", "kai", "you"],
-    epoz: ["kai", "you", "alex"],
-  };
+  // --- real issues from the airwavez org ---------------------------------
+  let repoNames = $state<string[]>([]);
+  let TICKETS = $state<Ticket[]>([]);
+  let me = $state("you");
+  let loading = $state(true);
+  let loadError = $state<string | null>(null);
+  let synth = 0;
+
+  function laneFor(iss: GhIssue): Lane {
+    if (iss.state === "closed") return "done";
+    const l = iss.labels.map((x) => x.toLowerCase());
+    if (l.some((x) => x.includes("review") || x.includes("qa"))) return "review";
+    if (l.some((x) => x.includes("progress") || x.includes("wip") || x.includes("doing")))
+      return "progress";
+    return "backlog";
+  }
+  function categoryFor(labels: string[]): Label {
+    const l = labels.map((x) => x.toLowerCase());
+    if (l.some((x) => x.includes("bug") || x.includes("fix"))) return "bug";
+    if (l.some((x) => x.includes("design") || x.includes("ui") || x.includes("ux"))) return "design";
+    if (l.some((x) => x.includes("chore") || x.includes("docs") || x.includes("refactor")))
+      return "chore";
+    return "feature";
+  }
+  function toTicket(iss: GhIssue): Ticket {
+    return {
+      id: ++synth,
+      number: iss.number,
+      repo: iss.repo,
+      url: iss.url,
+      title: iss.title,
+      lane: laneFor(iss),
+      label: categoryFor(iss.labels),
+      labels: iss.labels,
+      assignee: iss.assignees[0] ?? iss.author ?? "you",
+      avatar: iss.avatar_url,
+      author: iss.author,
+      project: iss.repo,
+      points: iss.points ?? 3,
+      body: iss.body ?? "",
+    };
+  }
+  async function load() {
+    loading = true;
+    loadError = null;
+    try {
+      const rs = await githubRepos();
+      repoNames = rs.map((r) => r.name);
+      const [iss, u] = await Promise.all([
+        githubIssues(repoNames),
+        githubUser().catch(() => null),
+      ]);
+      if (u) me = u.login;
+      synth = 0;
+      TICKETS = iss.map(toTicket);
+    } catch (e) {
+      loadError = String(e);
+      TICKETS = [];
+    } finally {
+      loading = false;
+    }
+  }
+  onMount(load);
+
+  // Project members = whoever is actually assigned/authoring in that repo.
   function membersFor(project: string): string[] {
-    return PROJECT_MEMBERS[project] ?? ["you"];
+    const set = new Set<string>();
+    for (const t of TICKETS) {
+      if (t.project !== project) continue;
+      if (t.assignee) set.add(t.assignee);
+      if (t.author) set.add(t.author);
+    }
+    if (set.size === 0) set.add(me);
+    return [...set];
   }
 
-  let TICKETS = $state<Ticket[]>([
-    { id: 101, title: "Calendar date encoding (@date token)", lane: "backlog", label: "feature", assignee: "you", project: "notez2", points: 5, body: "## Goal\nAn `@date` token in todo text that round-trips through the CLI.\n\n- [ ] parse `@2026-06-12`\n- [ ] serialize losslessly\n- [ ] calendar reads it" },
-    { id: 102, title: "Ticket files synced via git", lane: "backlog", label: "feature", assignee: "alex", project: "notez2", points: 8, body: "Each ticket = a markdown file in the repo, synced like notes/todos." },
-    { id: 103, title: "Extended task states: deferred / scrapped", lane: "backlog", label: "feature", assignee: "mira", project: "notez2", points: 3, body: "" },
-    { id: 104, title: "repoz: broad repo status scan", lane: "backlog", label: "chore", assignee: "sam", project: "repoz", points: 5, body: "Scan all repos for **dirty trees** and **unpushed commits**." },
-    { id: 201, title: "GitHub OAuth device flow", lane: "progress", label: "feature", assignee: "you", project: "spaze", points: 8, body: "1. `POST /device/code`\n2. poll for the token\n3. store in the keychain" },
-    { id: 202, title: "Contextual inspector + cross counts", lane: "progress", label: "feature", assignee: "nora", project: "notez2", points: 5, body: "" },
-    { id: 203, title: "epoz: git handling wrapper", lane: "progress", label: "feature", assignee: "kai", project: "epoz", points: 13, body: "The big one — `repoz`'s big brother." },
-    { id: 301, title: "Unify toolbars on lucide icons", lane: "review", label: "design", assignee: "mira", project: "notez2", points: 3, body: "Even toolbars across notez/todoz/ticketz." },
-    { id: 302, title: "Duplicate-path dedupe in collect_all", lane: "review", label: "bug", assignee: "you", project: "notez2", points: 2, body: "Personal notes double-walked into global → crash. Fixed + test." },
-    { id: 401, title: "Split markdown preview pane", lane: "done", label: "feature", assignee: "alex", project: "notez2", points: 5, body: "" },
-    { id: 402, title: "todoz tree connectors", lane: "done", label: "design", assignee: "nora", project: "notez2", points: 2, body: "" },
-    { id: 403, title: "Workspace + serde restructure", lane: "done", label: "chore", assignee: "you", project: "notez2", points: 13, body: "" },
-  ]);
-  let nextId = 500;
-
-  const PROJECTS = (() => {
-    const order: string[] = [];
-    const map: Record<string, number> = {};
-    for (const t of TICKETS) {
-      if (!(t.project in map)) {
-        map[t.project] = 0;
-        order.push(t.project);
-      }
-      map[t.project]++;
-    }
-    return order.map((name) => ({ name, count: map[name] }));
-  })();
+  let PROJECTS = $derived(
+    repoNames.map((name) => ({ name, count: TICKETS.filter((t) => t.project === name).length }))
+  );
 
   let activeProject = $state<string | null>(null);
   let sidebarWidth = $state(185);
@@ -140,21 +198,27 @@
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  function newTicket(lane: Lane = "backlog") {
-    const project = activeProject ?? PROJECTS[0]?.name ?? "notez2";
-    const id = nextId++;
-    TICKETS.push({
-      id,
-      title: "New ticket",
-      lane,
-      label: "feature",
-      assignee: membersFor(project)[0] ?? "you",
-      project,
-      points: 3,
-      body: "",
-    });
-    selectedId = id;
+  // New-issue composer. Creating writes a real GitHub issue (user-initiated),
+  // then reloads the board so the new card reflects the source of truth.
+  let draft = $state<{ repo: string; title: string; body: string } | null>(null);
+  let creating = $state(false);
+  function startNew() {
+    draft = { repo: activeProject ?? repoNames[0] ?? "", title: "", body: "" };
+    selectedId = null;
     showEdit = true;
+  }
+  async function createDraft() {
+    if (!draft || !draft.title.trim() || !draft.repo) return;
+    creating = true;
+    try {
+      await githubCreateIssue(draft.repo, draft.title.trim(), draft.body);
+      draft = null;
+      await load();
+    } catch (e) {
+      loadError = String(e);
+    } finally {
+      creating = false;
+    }
   }
 
   // --- Pointer-based drag (HTML5 DnD is unreliable in WKWebView) ----------
@@ -253,9 +317,12 @@
   <div class="main">
     <div class="viewbar">
       <span class="title">Ticketz</span>
-      <span class="counts">{visible.length} tickets{activeProject ? ` · ${activeProject}` : ""} · mock</span>
+      <span class="counts">
+        {visible.length} issues{activeProject ? ` · ${activeProject}` : ""} ·
+        {loading ? "loading…" : loadError ? "offline" : GITHUB_ORG}
+      </span>
       <div class="spacer"></div>
-      <button class="newbtn" onclick={() => newTicket()} title="New ticket (in Backlog)">
+      <button class="newbtn" onclick={startNew} title="New issue">
         <Plus size={15} /> New
       </button>
     </div>
@@ -285,7 +352,7 @@
                 <div class="card-top">
                   <span class="top-left">
                     <span class="tag" style="--c:{LABEL_COLOR[t.label]}">{t.label}</span>
-                    <span class="num">#{t.id}</span>
+                    <span class="num">{t.repo} #{t.number}</span>
                   </span>
                   <span class="pts" style="--pc:{pointTone(t.points)}" title="{t.points} story points">
                     {t.points} <span class="sp">SP</span>
@@ -296,13 +363,16 @@
                   <span class="proj">{t.project}</span>
                   <span class="assignee">
                     {#if t.body.trim()}<span class="has-notes" title="Has notes">●</span>{/if}
-                    <Avatar name={t.assignee} size={18} />
+                    <Avatar name={t.assignee} src={t.avatar} size={18} />
                   </span>
                 </div>
               </div>
             {/each}
-            <button class="add-card" onclick={() => newTicket(col.key)}>
-              <Plus size={13} /> Add ticket
+            {#if inLane(col.key).length === 0}
+              <div class="lane-empty">{loading ? "…" : "empty"}</div>
+            {/if}
+            <button class="add-card" onclick={startNew}>
+              <Plus size={13} /> New issue
             </button>
           </div>
         </section>
@@ -312,8 +382,33 @@
       {#if showEdit}
     <Resizer get={() => editWidth} set={(n) => (editWidth = n)} dir={-1} min={260} max={520} />
     <aside class="pane" style="width:{editWidth}px">
-      {#if selected}
-        <div class="pane-head"><Pencil size={13} /> Edit · #{selected.id}</div>
+      {#if draft}
+        <div class="pane-head"><Plus size={13} /> New issue</div>
+        <div class="field">
+          <span class="flabel">Repository</span>
+          <div class="seg seg-wrap">
+            {#each repoNames as r (r)}
+              <button class="seg-btn" class:on={draft.repo === r} onclick={() => draft && (draft.repo = r)}>{r}</button>
+            {/each}
+          </div>
+        </div>
+        <label class="field">
+          <span class="flabel">Title</span>
+          <input class="f-input" bind:value={draft.title} placeholder="Issue title" />
+        </label>
+        <label class="field grow">
+          <span class="flabel">Body (markdown)</span>
+          <textarea class="body-edit" bind:value={draft.body} placeholder="Describe the issue…"></textarea>
+        </label>
+        <div class="draft-actions">
+          <button class="ghost-btn" onclick={() => (draft = null)} disabled={creating}>Cancel</button>
+          <button class="newbtn" onclick={createDraft} disabled={creating || !draft.title.trim() || !draft.repo}>
+            {creating ? "Creating…" : `Create in ${draft.repo || "…"}`}
+          </button>
+        </div>
+        {#if loadError}<div class="draft-err">{loadError}</div>{/if}
+      {:else if selected}
+        <div class="pane-head"><Pencil size={13} /> {selected.repo} #{selected.number} <span class="local-hint">local edits</span></div>
         <label class="field">
           <span class="flabel">Title</span>
           <input class="f-input" value={selected.title} oninput={(e) => selected && (selected.title = e.currentTarget.value)} />
@@ -1034,5 +1129,56 @@
     overflow-y: auto;
     border-left: 1px solid var(--border);
     background: var(--mantle);
+  }
+
+  /* empty lane hint + new-issue composer */
+  .lane-empty {
+    text-align: center;
+    color: var(--faint);
+    font-size: 0.7rem;
+    padding: 0.5rem 0;
+    opacity: 0.7;
+  }
+  .draft-actions {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+    margin-top: 0.5rem;
+  }
+  .ghost-btn {
+    padding: 0.3rem 0.6rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--border);
+    background: none;
+    color: var(--subtext);
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.78rem;
+  }
+  .ghost-btn:hover {
+    color: var(--text);
+    border-color: var(--border-strong);
+  }
+  .newbtn:disabled,
+  .ghost-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .draft-err {
+    margin-top: 0.5rem;
+    color: var(--danger);
+    font-size: 0.72rem;
+    word-break: break-word;
+  }
+  .local-hint {
+    margin-left: auto;
+    font-size: 0.6rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--faint);
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    padding: 0.05rem 0.35rem;
   }
 </style>

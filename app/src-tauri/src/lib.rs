@@ -61,6 +61,7 @@ pub fn run() {
             github::github_repos,
             github::github_commits,
             github::github_issues,
+            github::github_create_issue,
             github::github_contributors,
         ])
         .run(tauri::generate_context!())

@@ -88,5 +88,12 @@ export const githubCommits = (repos: string[], limit = 10, org: string = GITHUB_
   invoke<GhCommit[]>("github_commits", { org, repos, limit });
 export const githubIssues = (repos: string[], org: string = GITHUB_ORG) =>
   invoke<GhIssue[]>("github_issues", { org, repos });
+/** Create a real issue; resolves to the new issue number. */
+export const githubCreateIssue = (
+  repo: string,
+  title: string,
+  body: string,
+  org: string = GITHUB_ORG
+) => invoke<number>("github_create_issue", { org, repo, title, body });
 export const githubContributors = (repo: string, org: string = GITHUB_ORG) =>
   invoke<GhContributor[]>("github_contributors", { org, repo });
