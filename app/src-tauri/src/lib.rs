@@ -58,7 +58,7 @@ pub fn run() {
             commands::collapse_all,
             commands::create_category,
             github::github_user,
-            github::github_repos,
+            github::github_all_repos,
             github::github_commits,
             github::github_issues,
             github::github_create_issue,

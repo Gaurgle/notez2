@@ -1,24 +1,22 @@
 <script lang="ts">
-  // "ticketz" board, backed by real GitHub issues from the airwavez org.
-  // Issues map to lanes (closed = Done; review/in-progress labels drive the
-  // middle lanes; everything else is Backlog). Drag-to-organize is local for
-  // now; GitHub write-back for moves is a follow-up (see DESIGN.md). The New
-  // button creates a real issue.
+  // "ticketz" board, backed by real GitHub issues across the active repos
+  // (personal + orgs; the selection lives in the shared repoStore). Issues map
+  // to lanes (closed = Done; review/in-progress labels drive the middle lanes;
+  // everything else is Backlog). Drag-to-organize is local for now; GitHub
+  // write-back for moves is a follow-up (see DESIGN.md). New creates a real issue.
   import { onMount } from "svelte";
   import Avatar from "$lib/components/Avatar.svelte";
   import MachineAvatar from "$lib/components/MachineAvatar.svelte";
   import MarkdownPreview from "$lib/components/MarkdownPreview.svelte";
   import Calendar from "$lib/components/Calendar.svelte";
   import Resizer from "$lib/components/Resizer.svelte";
-  import {
-    githubRepos,
-    githubIssues,
-    githubUser,
-    githubCreateIssue,
-    GITHUB_ORG,
-  } from "$lib/ipc";
+  import { githubIssues, githubUser, githubCreateIssue } from "$lib/ipc";
+  import { repoStore } from "$lib/repos.svelte";
   import type { GhIssue } from "$lib/types";
   import { Plus, Eye, Pencil, PanelRight, CalendarDays } from "lucide-svelte";
+
+  /** Short repo name from a full owner/repo key. */
+  const shortName = (full: string) => full.split("/").pop() ?? full;
 
   let { active = true }: { active?: boolean } = $props();
 
@@ -63,13 +61,14 @@
     return "var(--danger)";
   }
 
-  // --- real issues from the airwavez org ---------------------------------
-  let repoNames = $state<string[]>([]);
+  // --- real issues across the active repos --------------------------------
+  let repoNames = $state<string[]>([]); // full owner/repo names (the active set)
   let TICKETS = $state<Ticket[]>([]);
   let me = $state("you");
   let loading = $state(true);
   let loadError = $state<string | null>(null);
   let synth = 0;
+  let fetchToken = 0;
 
   function laneFor(iss: GhIssue): Lane {
     if (iss.state === "closed") return "done";
@@ -105,27 +104,46 @@
       body: iss.body ?? "",
     };
   }
-  async function load() {
-    loading = true;
-    loadError = null;
+  onMount(async () => {
     try {
-      const rs = await githubRepos();
-      repoNames = rs.map((r) => r.name);
-      const [iss, u] = await Promise.all([
-        githubIssues(repoNames),
-        githubUser().catch(() => null),
-      ]);
-      if (u) me = u.login;
+      me = (await githubUser()).login;
+    } catch {
+      /* offline */
+    }
+    await repoStore.ensure(me);
+  });
+
+  // Reload issues whenever the active repo selection changes.
+  $effect(() => {
+    const names = repoStore.activeNames;
+    if (repoStore.loading) return;
+    const token = ++fetchToken;
+    load(names, token);
+  });
+
+  async function load(names: string[], token: number) {
+    loading = true;
+    loadError = repoStore.error;
+    repoNames = names;
+    if (names.length === 0) {
+      TICKETS = [];
+      loading = false;
+      return;
+    }
+    try {
+      const iss = await githubIssues(names);
+      if (token !== fetchToken) return;
       synth = 0;
       TICKETS = iss.map(toTicket);
     } catch (e) {
-      loadError = String(e);
-      TICKETS = [];
+      if (token === fetchToken) {
+        loadError = String(e);
+        TICKETS = [];
+      }
     } finally {
-      loading = false;
+      if (token === fetchToken) loading = false;
     }
   }
-  onMount(load);
 
   // Project members = whoever is actually assigned/authoring in that repo.
   function membersFor(project: string): string[] {
@@ -140,7 +158,11 @@
   }
 
   let PROJECTS = $derived(
-    repoNames.map((name) => ({ name, count: TICKETS.filter((t) => t.project === name).length }))
+    repoNames.map((full) => ({
+      full,
+      name: shortName(full),
+      count: TICKETS.filter((t) => t.project === full).length,
+    }))
   );
 
   let activeProject = $state<string | null>(null);
@@ -213,7 +235,7 @@
     try {
       await githubCreateIssue(draft.repo, draft.title.trim(), draft.body);
       draft = null;
-      await load();
+      await load(repoNames, ++fetchToken);
     } catch (e) {
       loadError = String(e);
     } finally {
@@ -298,18 +320,21 @@
         <span class="item-label">All projects</span>
         <span class="count">{TICKETS.length}</span>
       </button>
-      {#each PROJECTS as p (p.name)}
+      {#each PROJECTS as p (p.full)}
         <button
           class="item"
-          class:active={activeProject === p.name}
-          onclick={() => (activeProject = p.name)}
-          onmouseenter={() => (hoveredProject = p.name)}
-          onmouseleave={() => hoveredProject === p.name && (hoveredProject = null)}
+          class:active={activeProject === p.full}
+          onclick={() => (activeProject = p.full)}
+          onmouseenter={() => (hoveredProject = p.full)}
+          onmouseleave={() => hoveredProject === p.full && (hoveredProject = null)}
         >
           <span class="item-label">{p.name}</span>
           <span class="count">{p.count}</span>
         </button>
       {/each}
+      {#if PROJECTS.length === 0}
+        <div class="proj-empty">{loading ? "loading…" : "no active repos — pick some on Home"}</div>
+      {/if}
     </nav>
   </aside>
   <Resizer get={() => sidebarWidth} set={(n) => (sidebarWidth = n)} dir={1} min={160} max={320} />
@@ -318,8 +343,8 @@
     <div class="viewbar">
       <span class="title">Ticketz</span>
       <span class="counts">
-        {visible.length} issues{activeProject ? ` · ${activeProject}` : ""} ·
-        {loading ? "loading…" : loadError ? "offline" : GITHUB_ORG}
+        {visible.length} issues{activeProject ? ` · ${shortName(activeProject)}` : ""} ·
+        {loading ? "loading…" : loadError ? "offline" : `${repoNames.length} repos`}
       </span>
       <div class="spacer"></div>
       <button class="newbtn" onclick={startNew} title="New issue">
@@ -360,7 +385,7 @@
                 </div>
                 <div class="card-title">{t.title}</div>
                 <div class="card-foot">
-                  <span class="proj">{t.project}</span>
+                  <span class="proj">{shortName(t.project)}</span>
                   <span class="assignee">
                     {#if t.body.trim()}<span class="has-notes" title="Has notes">●</span>{/if}
                     <Avatar name={t.assignee} src={t.avatar} size={18} />
@@ -388,7 +413,7 @@
           <span class="flabel">Repository</span>
           <div class="seg seg-wrap">
             {#each repoNames as r (r)}
-              <button class="seg-btn" class:on={draft.repo === r} onclick={() => draft && (draft.repo = r)}>{r}</button>
+              <button class="seg-btn" class:on={draft.repo === r} onclick={() => draft && (draft.repo = r)}>{shortName(r)}</button>
             {/each}
           </div>
         </div>
@@ -403,7 +428,7 @@
         <div class="draft-actions">
           <button class="ghost-btn" onclick={() => (draft = null)} disabled={creating}>Cancel</button>
           <button class="newbtn" onclick={createDraft} disabled={creating || !draft.title.trim() || !draft.repo}>
-            {creating ? "Creating…" : `Create in ${draft.repo || "…"}`}
+            {creating ? "Creating…" : `Create in ${draft.repo ? shortName(draft.repo) : "…"}`}
           </button>
         </div>
         {#if loadError}<div class="draft-err">{loadError}</div>{/if}
@@ -430,7 +455,7 @@
           </div>
         </div>
         <div class="field">
-          <span class="flabel">Assignee · {selected.project} members</span>
+          <span class="flabel">Assignee · {shortName(selected.project)} members</span>
           <div class="seg seg-wrap">
             {#each membersFor(selected.project) as m (m)}
               <button class="seg-btn person" class:on={selected.assignee === m} onclick={() => selected && (selected.assignee = m)}>
@@ -471,8 +496,8 @@
         <section class="zone-sec">
           <div class="pane-head"><PanelRight size={13} /> Inspector</div>
           {#if hoveredProject}
-            {@const pc = PROJECTS.find((x) => x.name === hoveredProject)}
-            <div class="insp-title-row">{hoveredProject}</div>
+            {@const pc = PROJECTS.find((x) => x.full === hoveredProject)}
+            <div class="insp-title-row">{shortName(hoveredProject)}</div>
             <div class="insp-sub">project</div>
             <dl class="insp-rows">
               <dt>Tickets</dt>
@@ -493,7 +518,7 @@
             </div>
             <dl class="insp-rows">
               <dt>Project</dt>
-              <dd>{inspected.project}</dd>
+              <dd>{shortName(inspected.project)}</dd>
               <dt>Status</dt>
               <dd>{laneLabel(inspected.lane)}</dd>
               <dt>Assignee</dt>
@@ -1138,6 +1163,12 @@
     font-size: 0.7rem;
     padding: 0.5rem 0;
     opacity: 0.7;
+  }
+  .proj-empty {
+    color: var(--faint);
+    font-size: 0.72rem;
+    padding: 0.4rem 0.5rem;
+    line-height: 1.4;
   }
   .draft-actions {
     display: flex;

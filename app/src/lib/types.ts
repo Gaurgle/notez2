@@ -55,6 +55,11 @@ export interface TodoBoard {
 
 export interface GhRepo {
   name: string;
+  /** owner/repo — the stable key used across the app. */
+  full_name: string;
+  owner: string;
+  /** "User" | "Organization". */
+  owner_type: string;
   description: string;
   language: string | null;
   pushed_at: string;

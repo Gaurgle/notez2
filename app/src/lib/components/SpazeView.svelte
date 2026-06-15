@@ -6,9 +6,13 @@
   // backend yet, so messages you send stay local this session.
   import { onMount } from "svelte";
   import Avatar from "$lib/components/Avatar.svelte";
-  import { githubRepos, githubContributors, githubUser, GITHUB_ORG } from "$lib/ipc";
+  import { githubContributors, githubUser } from "$lib/ipc";
+  import { repoStore } from "$lib/repos.svelte";
   import type { GhRepo } from "$lib/types";
   import { Hash, Send, Users } from "lucide-svelte";
+
+  /** Short repo name from a full owner/repo key. */
+  const shortName = (full: string) => full.split("/").pop() ?? full;
 
   let { active = true }: { active?: boolean } = $props();
 
@@ -19,47 +23,42 @@
     avatar?: string | null;
   }
 
-  let repos = $state<GhRepo[]>([]);
+  // Rooms are the active repos (full owner/repo keys), shared via repoStore.
+  let rooms = $derived<GhRepo[]>(repoStore.activeRepos);
   let memberCount = $state<Record<string, number>>({});
   let me = $state<{ login: string; avatar: string | null }>({ login: "you", avatar: null });
-  let activeRoom = $state("");
+  let activeRoom = $state(""); // full owner/repo name
   let threads = $state<Record<string, Msg[]>>({});
   let loading = $state(true);
+  let seededFor = new Set<string>();
 
-  async function load() {
+  onMount(async () => {
     try {
-      const [rs, u] = await Promise.all([githubRepos(), githubUser().catch(() => null)]);
-      repos = rs;
-      if (u) me = { login: u.login, avatar: u.avatar_url };
-      if (rs.length && !activeRoom) activeRoom = rs[0].name;
-      // Seed each room with the repo's real description as a pinned intro line.
-      const seeded: Record<string, Msg[]> = {};
-      for (const r of rs) {
-        const desc = r.description?.trim();
-        seeded[r.name] = desc
-          ? [{ author: me.login, time: "", text: desc, avatar: me.avatar }]
-          : [];
-      }
-      threads = seeded;
-      // Real per-repo member counts (contributors), fanned out in parallel.
-      const counts: Record<string, number> = {};
-      await Promise.all(
-        rs.map(async (r) => {
-          try {
-            counts[r.name] = (await githubContributors(r.name)).length;
-          } catch {
-            counts[r.name] = 0;
-          }
-        })
-      );
-      memberCount = counts;
+      const u = await githubUser();
+      me = { login: u.login, avatar: u.avatar_url };
     } catch {
-      /* offline: leave rooms empty */
-    } finally {
-      loading = false;
+      /* offline */
     }
-  }
-  onMount(load);
+    await repoStore.ensure(me.login);
+    loading = false;
+  });
+
+  // Seed rooms (intro line + member counts) as the active selection changes.
+  $effect(() => {
+    const rs = rooms;
+    if (!activeRoom && rs.length) activeRoom = rs[0].full_name;
+    for (const r of rs) {
+      if (seededFor.has(r.full_name)) continue;
+      seededFor.add(r.full_name);
+      const desc = r.description?.trim();
+      threads[r.full_name] = desc
+        ? [{ author: me.login, time: "", text: desc, avatar: me.avatar }]
+        : (threads[r.full_name] ?? []);
+      githubContributors(r.full_name)
+        .then((c) => (memberCount[r.full_name] = c.length))
+        .catch(() => (memberCount[r.full_name] = 0));
+    }
+  });
 
   let draft = $state("");
 
@@ -86,25 +85,25 @@
   <aside class="rooms">
     <div class="server">
       <span class="server-name">spaze</span>
-      <span class="server-host">{GITHUB_ORG}</span>
+      <span class="server-host">{me.login}</span>
     </div>
     <div class="room-label">Rooms</div>
-    {#each repos as r (r.name)}
-      <button class="room" class:active={activeRoom === r.name} onclick={() => (activeRoom = r.name)}>
+    {#each rooms as r (r.full_name)}
+      <button class="room" class:active={activeRoom === r.full_name} onclick={() => (activeRoom = r.full_name)}>
         <Hash size={14} />
         <span class="room-name">{r.name}</span>
-        {#if memberCount[r.name]}<span class="badge">{memberCount[r.name]}</span>{/if}
+        {#if memberCount[r.full_name]}<span class="badge">{memberCount[r.full_name]}</span>{/if}
       </button>
     {/each}
-    {#if repos.length === 0}
-      <div class="room-empty">{loading ? "loading…" : "no repos"}</div>
+    {#if rooms.length === 0}
+      <div class="room-empty">{loading ? "loading…" : "no active repos — pick some on Home"}</div>
     {/if}
   </aside>
 
   <div class="main">
     <header class="room-head">
       <Hash size={16} />
-      <span class="head-name">{activeRoom || "—"}</span>
+      <span class="head-name">{activeRoom ? shortName(activeRoom) : "—"}</span>
       <div class="spacer"></div>
       <span class="members"><Users size={13} /> {memberCount[activeRoom] ?? 0}</span>
     </header>
@@ -135,7 +134,7 @@
     >
       <input
         class="input"
-        placeholder={`Message #${activeRoom}…  (try #note or #todo)`}
+        placeholder={`Message #${activeRoom ? shortName(activeRoom) : ""}…  (try #note or #todo)`}
         bind:value={draft}
       />
       <button class="ghost iconbtn icononly" type="submit" title="Send" aria-label="Send">
@@ -144,7 +143,7 @@
     </form>
 
     <div class="statusbar">
-      <span class="sb-path"># {activeRoom}</span>
+      <span class="sb-path"># {activeRoom ? shortName(activeRoom) : ""}</span>
       <div class="sb-spacer"></div>
       <span class="sb-count">
         {(threads[activeRoom] ?? []).length} messages · {memberCount[activeRoom] ?? 0} members · local

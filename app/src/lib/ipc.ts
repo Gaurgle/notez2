@@ -76,24 +76,28 @@ export const machineName = () => invoke<string>("machine_name");
 export const migratePreview = () => invoke<PlanItem[]>("migrate_preview");
 export const migrateApply = () => invoke<string[]>("migrate_apply");
 
-// --- GitHub (real org data via the authed gh CLI) ---
-
-/** The default org backing the desktop views. */
-export const GITHUB_ORG = "airwavez";
+// --- GitHub (real data via the authed gh CLI) ---
+//
+// Repos are identified by their full `owner/repo` name everywhere so personal
+// repos and multiple orgs coexist without collisions.
 
 export const githubUser = () => invoke<GhUser>("github_user");
-export const githubRepos = (org: string = GITHUB_ORG) =>
-  invoke<GhRepo[]>("github_repos", { org });
-export const githubCommits = (repos: string[], limit = 10, org: string = GITHUB_ORG) =>
-  invoke<GhCommit[]>("github_commits", { org, repos, limit });
-export const githubIssues = (repos: string[], org: string = GITHUB_ORG) =>
-  invoke<GhIssue[]>("github_issues", { org, repos });
-/** Create a real issue; resolves to the new issue number. */
-export const githubCreateIssue = (
-  repo: string,
-  title: string,
-  body: string,
-  org: string = GITHUB_ORG
-) => invoke<number>("github_create_issue", { org, repo, title, body });
-export const githubContributors = (repo: string, org: string = GITHUB_ORG) =>
-  invoke<GhContributor[]>("github_contributors", { org, repo });
+
+/** Every repo the user can reach (owned / collaborator / org member). */
+export const githubAllRepos = () => invoke<GhRepo[]>("github_all_repos");
+
+/** Recent commits across `owner/repo` names, merged newest first. */
+export const githubCommits = (repos: string[], limit = 10) =>
+  invoke<GhCommit[]>("github_commits", { repos, limit });
+
+/** All issues (open + closed) across `owner/repo` names. */
+export const githubIssues = (repos: string[]) =>
+  invoke<GhIssue[]>("github_issues", { repos });
+
+/** Create a real issue in `owner/repo`; resolves to the new issue number. */
+export const githubCreateIssue = (repo: string, title: string, body: string) =>
+  invoke<number>("github_create_issue", { repo, title, body });
+
+/** Contributors to a single `owner/repo`. */
+export const githubContributors = (repo: string) =>
+  invoke<GhContributor[]>("github_contributors", { repo });

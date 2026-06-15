@@ -2,7 +2,6 @@
   // Mock "home" dashboard on a draggable/resizable Gridstack board.
   // The clock, the calendar month, and the weather (Open-Meteo) are real.
   import { onMount, onDestroy } from "svelte";
-  import { SvelteSet } from "svelte/reactivity";
   import { GridStack } from "gridstack";
   import "gridstack/dist/gridstack.min.css";
   import Avatar from "$lib/components/Avatar.svelte";
@@ -11,15 +10,14 @@
   import { hashStr, relativeTime } from "$lib/mock";
   import {
     githubUser,
-    githubRepos,
     githubCommits,
     githubIssues,
     githubContributors,
     listNotes,
     loadTodoBoard,
-    GITHUB_ORG,
   } from "$lib/ipc";
-  import type { GhRepo, GhCommit, GhIssue, GhContributor, GhUser } from "$lib/types";
+  import { repoStore } from "$lib/repos.svelte";
+  import type { GhCommit, GhIssue, GhContributor, GhUser } from "$lib/types";
   import {
     CloudSun,
     GitCommitHorizontal,
@@ -52,9 +50,11 @@
     now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })
   );
 
-  // --- real data, loaded from the airwavez org via the authed gh CLI -------
+  // --- real data: the active repos (across personal + orgs) via the gh CLI --
+  // The repo list + selection live in the shared repoStore so every view agrees
+  // on which repos are active. The heavy per-repo fetches below re-run whenever
+  // that selection changes.
   let user = $state<GhUser | null>(null);
-  let repos = $state<GhRepo[]>([]);
   let commits = $state<GhCommit[]>([]);
   let issues = $state<GhIssue[]>([]);
   let contributors = $state<GhContributor[]>([]);
@@ -63,38 +63,15 @@
   let todoDone = $state(0);
   let loading = $state(true);
   let loadError = $state<string | null>(null);
+  let fetchToken = 0;
 
-  async function loadAll() {
-    loading = true;
-    loadError = null;
+  onMount(async () => {
     try {
-      const [u, r] = await Promise.all([githubUser(), githubRepos()]);
-      user = u;
-      repos = r;
-      const names = r.map((x) => x.name);
-      // commits (deep enough to fill the heatmap), issues, and per-repo
-      // contributors all fan out in parallel.
-      const [c, iss, ...contribLists] = await Promise.all([
-        githubCommits(names, 100),
-        githubIssues(names),
-        ...names.map((n) => githubContributors(n)),
-      ]);
-      commits = c;
-      issues = iss;
-      const cmap = new Map<string, GhContributor>();
-      for (const list of contribLists as GhContributor[][]) {
-        for (const person of list) {
-          const existing = cmap.get(person.login);
-          if (existing) existing.contributions += person.contributions;
-          else cmap.set(person.login, { ...person });
-        }
-      }
-      contributors = [...cmap.values()].sort((a, b) => b.contributions - a.contributions);
-    } catch (e) {
-      loadError = String(e);
-    } finally {
-      loading = false;
+      user = await githubUser();
+    } catch {
+      /* offline: identity stays "you" */
     }
+    await repoStore.ensure(user?.login);
     // Local notez stats, independent of GitHub (best-effort).
     try {
       noteCount = (await listNotes()).length;
@@ -109,11 +86,61 @@
     } catch {
       /* ignore */
     }
+  });
+
+  // Re-fetch commits/issues/contributors whenever the active selection changes.
+  $effect(() => {
+    const names = repoStore.activeNames;
+    if (repoStore.loading) return;
+    const token = ++fetchToken;
+    loadActive(names, token);
+  });
+
+  async function loadActive(names: string[], token: number) {
+    loading = true;
+    loadError = repoStore.error;
+    if (names.length === 0) {
+      commits = [];
+      issues = [];
+      contributors = [];
+      loading = false;
+      return;
+    }
+    try {
+      const [c, iss, ...contribLists] = await Promise.all([
+        githubCommits(names, 100),
+        githubIssues(names),
+        ...names.map((n) => githubContributors(n)),
+      ]);
+      if (token !== fetchToken) return; // a newer selection superseded this one
+      commits = c;
+      issues = iss;
+      const cmap = new Map<string, GhContributor>();
+      for (const list of contribLists as GhContributor[][]) {
+        for (const person of list) {
+          const existing = cmap.get(person.login);
+          if (existing) existing.contributions += person.contributions;
+          else cmap.set(person.login, { ...person });
+        }
+      }
+      contributors = [...cmap.values()].sort((a, b) => b.contributions - a.contributions);
+    } catch (e) {
+      if (token === fetchToken) loadError = String(e);
+    } finally {
+      if (token === fetchToken) loading = false;
+    }
   }
 
-  onMount(loadAll);
-
   const firstName = $derived(user ? (user.name || user.login).split(" ")[0] : "you");
+  /** Short repo name from a full owner/repo key. */
+  const shortName = (full: string) => full.split("/").pop() ?? full;
+
+  // Sidebar repo filter (the user has many repos across owners).
+  let repoFilter = $state("");
+  const matchesFilter = (r: { name: string; full_name: string }) =>
+    !repoFilter ||
+    r.name.toLowerCase().includes(repoFilter.toLowerCase()) ||
+    r.full_name.toLowerCase().includes(repoFilter.toLowerCase());
   /** Relative time from an ISO-8601 timestamp. */
   const isoRel = (iso: string) => (iso ? relativeTime(Date.parse(iso) / 1000) : "");
 
@@ -130,7 +157,7 @@
       icon: KanbanSquare,
       color: "var(--accent-personal)",
     },
-    { label: "Commits", value: commits.length, trend: `${repos.length} repos`, icon: GitCommitHorizontal, color: "var(--accent-global)" },
+    { label: "Commits", value: commits.length, trend: `${repoStore.activeNames.length} active repos`, icon: GitCommitHorizontal, color: "var(--accent-global)" },
   ]);
 
   const WD = ["M", "T", "W", "T", "F", "S", "S"];
@@ -198,41 +225,15 @@
   ];
   const repoColor = (name: string) => REPO_ACCENTS[hashStr(name) % REPO_ACCENTS.length];
 
-  // --- Project visibility (sidebar) --------------------------------------
-  // Which org repos are visualized, persisted across sessions. Defaults to all
-  // repos the first time, then remembers the user's selection.
-  const PROJ_KEY = "notez-dash-projects-v2";
-  const selectedProjects = new SvelteSet<string>();
-  let projInit = false;
-  $effect(() => {
-    if (projInit || repos.length === 0) return;
-    projInit = true;
-    try {
-      const stored = localStorage.getItem(PROJ_KEY);
-      const list: string[] = stored ? JSON.parse(stored) : repos.map((r) => r.name);
-      for (const p of list) selectedProjects.add(p);
-    } catch {
-      for (const r of repos) selectedProjects.add(r.name);
-    }
-  });
-  $effect(() => {
-    if (projInit) localStorage.setItem(PROJ_KEY, JSON.stringify([...selectedProjects]));
-  });
-  function toggleProject(p: string) {
-    if (selectedProjects.has(p)) selectedProjects.delete(p);
-    else selectedProjects.add(p);
-  }
-
-  let visibleRepos = $derived(repos.filter((r) => selectedProjects.has(r.name)));
-  let openIssues = $derived(
-    issues.filter((i) => i.state === "open" && selectedProjects.has(i.repo))
-  );
+  // Active repos drive every widget. The fetch above already scoped commits and
+  // issues to the selection, so these just shape that data for display.
+  let visibleRepos = $derived(repoStore.activeRepos);
+  let openIssues = $derived(issues.filter((i) => i.state === "open"));
   // Real commits grouped by repo (newest first), capped per repo for the feed.
   let visibleCommitGroups = $derived.by(() => {
     const order: string[] = [];
     const map = new Map<string, GhCommit[]>();
     for (const c of commits) {
-      if (!selectedProjects.has(c.repo)) continue;
       if (!map.has(c.repo)) {
         map.set(c.repo, []);
         order.push(c.repo);
@@ -242,7 +243,7 @@
     }
     return order.map((repo) => ({
       repo,
-      path: `~/repos/${repo}`,
+      name: shortName(repo),
       open: issues.filter((i) => i.repo === repo && i.state === "open").length,
       commits: map.get(repo) ?? [],
     }));
@@ -325,16 +326,39 @@
       <MachineAvatar />
       <span class="brand-name">home</span>
     </div>
-    <nav class="group">
-      <div class="group-label">{GITHUB_ORG}</div>
-      {#each repos as r (r.name)}
-        <button class="item" class:active={selectedProjects.has(r.name)} onclick={() => toggleProject(r.name)}>
-          <span class="cbox" class:on={selectedProjects.has(r.name)}></span>
-          <span class="item-label">{r.name}</span>
-        </button>
+    <nav class="group repo-picker">
+      <div class="group-label">Active repos · {repoStore.activeNames.length}</div>
+      <input class="repo-filter" placeholder="filter…" bind:value={repoFilter} />
+      {#each repoStore.groups as g (g.owner)}
+        {@const frepos = g.repos.filter(matchesFilter)}
+        {#if frepos.length}
+          {@const sel = g.repos.filter((r) => repoStore.selected.has(r.full_name)).length}
+          <div class="owner-row">
+            <span class="owner-name">{g.isMe ? "personal" : g.owner}</span>
+            <button
+              class="owner-toggle"
+              title="Toggle all in {g.owner}"
+              onclick={() => repoStore.setGroup(g.repos, sel < g.repos.length)}
+            >
+              {sel}/{g.repos.length}
+            </button>
+          </div>
+          {#each frepos as r (r.full_name)}
+            <button class="item" class:active={repoStore.selected.has(r.full_name)} onclick={() => repoStore.toggle(r.full_name)}>
+              <span class="cbox" class:on={repoStore.selected.has(r.full_name)}></span>
+              <span class="item-label">{r.name}</span>
+              {#if r.is_private}<span class="lock" title="private">·</span>{/if}
+            </button>
+          {/each}
+        {/if}
       {/each}
-      {#if repos.length === 0}
-        <div class="side-empty">{loading ? "loading…" : "no repos"}</div>
+      {#if repoStore.repos.length === 0}
+        <div class="side-empty">{repoStore.loading ? "loading…" : "no repos"}</div>
+      {/if}
+      {#if repoStore.archivedCount > 0 || repoStore.showArchived}
+        <button class="archive-toggle" onclick={() => (repoStore.showArchived = !repoStore.showArchived)}>
+          {repoStore.showArchived ? "hide dormant repos" : `show ${repoStore.archivedCount} dormant (6mo+)`}
+        </button>
       {/if}
     </nav>
   </aside>
@@ -431,7 +455,7 @@
           <ul class="list">
             {#each openIssues.slice(0, 7) as it (it.repo + it.number)}
               <li class="news">
-                <span class="news-tag">{it.repo}</span>
+                <span class="news-tag">{shortName(it.repo)}</span>
                 <span class="li-name">{it.title}</span>
                 <span class="li-detail">#{it.number}</span>
               </li>
@@ -467,8 +491,8 @@
               <div class="repo-block">
                 <div class="repo-line">
                   <span class="proj-dot" style="--c:{repoColor(g.repo)}"></span>
-                  <span class="repo-name">{g.repo}</span>
-                  <span class="repo-path">{g.path}</span>
+                  <span class="repo-name">{g.name}</span>
+                  <span class="repo-path">{g.repo}</span>
                   <span class="leader"></span>
                   {#if g.open > 0}
                     <span class="behind">{g.open} open</span>
@@ -1092,6 +1116,73 @@
     color: var(--faint);
     font-size: 0.72rem;
     padding: 0.25rem 0.5rem;
+  }
+  .repo-filter {
+    width: 100%;
+    box-sizing: border-box;
+    margin: 0 0 0.35rem;
+    padding: 0.3rem 0.45rem;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--border);
+    border-radius: 0.4rem;
+    color: var(--text);
+    font: inherit;
+    font-size: 0.74rem;
+  }
+  .repo-filter:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  .owner-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.5rem 0.2rem;
+  }
+  .owner-name {
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--subtext);
+    font-weight: 700;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .owner-toggle {
+    font-size: 0.6rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--faint);
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    padding: 0.02rem 0.35rem;
+    cursor: pointer;
+  }
+  .owner-toggle:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+  .lock {
+    color: var(--faint);
+    margin-left: auto;
+  }
+  .archive-toggle {
+    margin-top: 0.4rem;
+    width: 100%;
+    padding: 0.3rem 0.45rem;
+    background: none;
+    border: 1px dashed var(--border);
+    border-radius: 0.4rem;
+    color: var(--faint);
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.68rem;
+  }
+  .archive-toggle:hover {
+    color: var(--accent);
+    border-color: var(--accent);
   }
   .err {
     color: var(--accent-global);

@@ -27,10 +27,20 @@
 
   $effect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Tab" && e.ctrlKey && !isTyping(e.target)) {
+      if (isTyping(e.target)) return;
+      if (e.key === "Tab" && e.ctrlKey) {
         e.preventDefault();
         const dir = e.shiftKey ? -1 : 1;
         mode = MODES[(MODES.indexOf(mode) + dir + MODES.length) % MODES.length];
+        return;
+      }
+      // Ctrl+1..6 jumps straight to a view (6 reserved for a future view).
+      if (e.ctrlKey && !e.shiftKey && !e.altKey && /^[1-6]$/.test(e.key)) {
+        const idx = Number(e.key) - 1;
+        if (idx < MODES.length) {
+          e.preventDefault();
+          mode = MODES[idx];
+        }
       }
     }
     window.addEventListener("keydown", onKey);
@@ -41,19 +51,19 @@
 <div class="shell">
   <div class="topbar">
     <div class="tabs">
-      <button class="tab" class:active={mode === "home"} onclick={() => (mode = "home")} title="Home">
+      <button class="tab" class:active={mode === "home"} onclick={() => (mode = "home")} title="Home (Ctrl+1)">
         <LayoutDashboard size={15} /><span class="label">Home</span>
       </button>
-      <button class="tab" class:active={mode === "notes"} onclick={() => (mode = "notes")} title="Notes">
+      <button class="tab" class:active={mode === "notes"} onclick={() => (mode = "notes")} title="Notes (Ctrl+2)">
         <FileText size={15} /><span class="label">Notes</span>
       </button>
-      <button class="tab" class:active={mode === "todoz"} onclick={() => (mode = "todoz")} title="Todos">
+      <button class="tab" class:active={mode === "todoz"} onclick={() => (mode = "todoz")} title="Todos (Ctrl+3)">
         <ListChecks size={15} /><span class="label">Todos</span>
       </button>
-      <button class="tab" class:active={mode === "ticketz"} onclick={() => (mode = "ticketz")} title="Tickets">
+      <button class="tab" class:active={mode === "ticketz"} onclick={() => (mode = "ticketz")} title="Tickets (Ctrl+4)">
         <KanbanSquare size={15} /><span class="label">Tickets</span>
       </button>
-      <button class="tab" class:active={mode === "spaze"} onclick={() => (mode = "spaze")} title="Spaze">
+      <button class="tab" class:active={mode === "spaze"} onclick={() => (mode = "spaze")} title="Spaze (Ctrl+5)">
         <MessagesSquare size={15} /><span class="label">Spaze</span>
       </button>
     </div>
