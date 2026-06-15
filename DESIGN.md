@@ -172,8 +172,8 @@ It does not touch the actual note files; it only re-writes the index layer. Old 
 Idea: surface a calendar dimension across notez and todoz. Each note/todo
 could carry a **created date** (already implicit in filenames/mtime) and,
 more importantly, an optional **deadline and/or event date**. A calendar
-view would then link documents to dates — see what's due, what was created
-when, and what events are coming up — across scopes and projects.
+view would then link documents to dates - see what's due, what was created
+when, and what events are coming up - across scopes and projects.
 
 **Surface / home for it:** the todoz **preview pane** (the selected-todo
 detail card added in the Melt UI refresh) is the natural place to set and
@@ -184,11 +184,11 @@ could aggregate dated todos/notes across sections.
 Open questions when this is picked up:
 - Where does the date live? Frontmatter in the `.md` / inline metadata on a
   todo line (e.g. a `@2026-07-01` token) vs. a sidecar index. **This is the
-  crux** — TODO.md round-trips byte-for-byte through `notez`/`todoz`/nvim, so
+  crux** - TODO.md round-trips byte-for-byte through `notez`/`todoz`/nvim, so
   the encoding must survive the CLI untouched (likely an inline `@date` token
   parsed by notez-core, mirroring how `#tags` already work).
 - Deadline vs. event vs. created-date as distinct fields.
-- Which UI library — Melt UI's `melt` package has **no** Calendar builder
+- Which UI library - Melt UI's `melt` package has **no** Calendar builder
   yet (only the legacy `@melt-ui/svelte` does), so this is a hand-roll or a
   legacy-pkg dependency when the time comes.
 - Interaction with todoz tags (`#blocked`, `#longterm`) and sorting.
@@ -208,7 +208,7 @@ todoz preview pane, so this is moving from idea to in-progress):
 - [x] Notes: real days-with-notes are lit (from mtimes); **multi-day selection
   filters the list**, with a clear button.
 - [ ] Tickets: calendar pane once tickets carry due dates / milestones.
-- [x] **Draggable start/end date range** in the calendar — drag across days to
+- [x] **Draggable start/end date range** in the calendar - drag across days to
   select a span (live preview while dragging, commits the whole range on
   release; plain click still toggles one day). Wired into notes' day filter via
   an `onRange` callback. Single source: `Calendar.svelte`.
@@ -217,34 +217,60 @@ todoz preview pane, so this is moving from idea to in-progress):
 - [ ] A fuller calendar view aggregating dated todos across sections and scopes.
 - [ ] Date-based sorting and filtering; interplay with `#blocked` / `#longterm`.
 
-### Weather (done) + GitHub activity (after auth)
+### Real GitHub org data (done, via the gh CLI)
+
+A backend module (`app/src-tauri/src/github.rs`) shells out to the
+already-authenticated **`gh` CLI** (no HTTP client, no token handling, no
+device-flow build-out) and exposes `github_user/repos/commits/issues/
+contributors/create_issue` over IPC (`ipc.ts`). The default org is `airwavez`.
+`gh` is resolved from `PATH`, falling back to `/opt/homebrew/bin/gh` for the
+Finder-launch case. This is the pragmatic stand-in until/if a real device-flow
+auth lands; it already gives every view real identity + org data.
 
 - [x] Dashboard weather is **live** via Open-Meteo (no API key), location from
   browser geolocation → IP lookup → Stockholm default, with animated
   sun/cloud/rain/snow/fog/storm scenes, humidity, and wind. Falls back to mock
   if offline.
-- [ ] Wire the dashboard **git-activity heatmap to real commit data** — defer
-  until GitHub auth (device flow) is done; no point before identity exists.
+- [x] **Dashboard is live**: real repos, recent-commit feed, **git-activity
+  heatmap + streak built from real commit dates**, contributors with real
+  avatars, an open-issues list, and note/todo/issue/commit stat tiles.
+- [x] **Ticketz reads real issues**: airwavez issues mapped to lanes (closed =
+  Done; review / in-progress labels drive the middle lanes; else Backlog), real
+  assignees/labels/points/markdown bodies; New creates a real issue via `gh`.
+- [x] **Spaze**: rooms are the org repos, member counts from real contributors,
+  composer posts as the real GitHub identity (login + avatar).
+- [x] **Notes/Todoz**: airwavez repos attached to the per-machine registry
+  (`~/.config/notez/registry.toml`) so their notes aggregate in the desktop app.
+- [ ] **Avatars on commits/issues**: commit authors already carry a real avatar
+  URL; issue authors/assignees don't yet (the issues DTO leaves `avatar_url`
+  null) - fetch them so ticketz/inspector show real faces.
 
-### Desktop dashboard + sync — open feedback (next)
+### Desktop dashboard + sync - open feedback (next)
 
 - [x] **CLI → desktop sync.** Todos polls the board from disk every 3s while the
   tab is open (no focus guard, so it works side-by-side with a terminal). The
-  reload used to fold the tree back up — fixed with `preserve_collapsed` in the
+  reload used to fold the tree back up - fixed with `preserve_collapsed` in the
   backend (carry expand/collapse across the disk reload, keyed by header
   identity). Skipped during edits/dialogs. _Follow-up: proper fs-watch (notify →
   emit event) to replace polling; and the TUI doesn't auto-refresh on desktop
-  edits — that's a notez-cli change._
+  edits - that's a notez-cli change._
 - [x] **Ticketz: drag cards between columns** (Backlog / In progress / Review /
-  Done) — pointer-based kanban drag-and-drop (WKWebView won't fire HTML5 DnD),
+  Done) - pointer-based kanban drag-and-drop (WKWebView won't fire HTML5 DnD),
   with reorder-within-lane and a floating ghost.
-- [x] **Widget resize handles** — thinned to 5px rounded corner dots + 2px edge
+- [ ] **Ticketz: GitHub write-back for moves/edits.** Drag-to-organize and the
+  edit pane are local/session-only right now. Persist them to GitHub: moving to
+  Done closes the issue (reopen on the way out); moving between open lanes sets a
+  `status:<lane>` label (auto-create it); title/body/assignee/points edits map to
+  `gh issue edit`. Re-fetch after each write so the board reflects the source of
+  truth. Needs a `github_move_issue` / `github_edit_issue` backend pair.
+- [x] **Widget resize handles** - thinned to 5px rounded corner dots + 2px edge
   pills, hidden until hover with a delayed fade-in.
-- [x] **Recent-commits widget → repoz CLI style**: restyled to mirror the
-  `repoz` terminal output — per-repo `name ~/path ···· N behind` header, one
-  full-width row per commit (`hash  message ···· +adds −dels  author`),
-  monospace, dotted leaders, green/red churn, footer total. Replaced the
-  multi-column avatar cards.
+- [x] **Recent-commits widget → repoz CLI style**, now on **real commits**:
+  per-repo `name ~/path ···· N open` header, one full-width row per commit
+  (`hash  message ···· relative-time  avatar`), monospace, dotted leaders. Churn
+  (+adds/−dels) was dropped with the mock data - the commits API doesn't return
+  per-commit stats without N extra calls; a follow-up could fetch churn for just
+  the visible rows or read it from the local clone.
 - [ ] **repoz: alternative layout for multiple selected repos.** The current
   full-width single-column listing reads great for **one** repo, but when
   several projects are selected the stacked per-repo blocks get long and the
@@ -257,19 +283,19 @@ Captured here so it isn't lost.
 
 ### Refactor: a shared view shell (tech debt, do later)
 
-The three working views — `NotesView`, `TodozView`, `TicketzView` — each
+The three working views - `NotesView`, `TodozView`, `TicketzView` - each
 **hand-roll the same chrome**, and it has drifted. This isn't urgent, but it
 should be consolidated before adding more views.
 
 What's duplicated across the views (with subtle, accidental differences):
 
 - **Sidebar**: brand (`MachineAvatar` + name), `group` / `group-label` / `item`
-  / `count`, the project list, and ~60 lines of identical CSS — copy-pasted into
+  / `count`, the project list, and ~60 lines of identical CSS - copy-pasted into
   each view (and into the Dashboard sidebar). Notes uses the standalone
   `Sidebar.svelte`; todoz/ticketz/dashboard re-implement it inline.
 - **Footer / pane toggles**: each view rebuilds the statusbar + `pane-toggle`
   buttons. Ticketz had even diverged with a **local `.pane-toggle`** (purple
-  background) that broke parity with notes — only caught by eye. The shared
+  background) that broke parity with notes - only caught by eye. The shared
   `.pane-toggle` lives in `app.css`; views should not redefine it.
 - **Resizable panes**: every view repeats `Resizer` + a `*Width` `$state` +
   the `{#if showX}` pane wiring, with per-view min/max drift.
@@ -360,7 +386,7 @@ identical regardless of input modality.
 ### Authorship + activity, via GitHub identity (future)
 
 Once the desktop app authenticates with GitHub, every note and todo can carry
-**who** touched it and **when** — surfaced on the row as a small author avatar
+**who** touched it and **when** - surfaced on the row as a small author avatar
 and a relative time ("2d ago"). A mock version of this already renders in the
 todoz rows (deterministic placeholder data) to evaluate the layout.
 
@@ -378,7 +404,7 @@ todoz rows (deterministic placeholder data) to evaluate the layout.
 ### A repo-bound ticket / kanban layer (big-picture, future)
 
 The natural next layer is a **Trello-style ticket board** bound to the
-project/repo — tickets with status columns, assignees (GitHub users), and links
+project/repo - tickets with status columns, assignees (GitHub users), and links
 to the notes and todos that already live with the repo. This ties the pieces
 into one workspace:
 
@@ -388,7 +414,7 @@ into one workspace:
   the repo (e.g. markdown + frontmatter, or a structured dir), so they sync,
   diff, and merge with the same byte-for-byte CLI-compatible discipline as
   notes/todoz. No separate backend; GitHub is the sync substrate.
-- **`spaze` (the CLI chat tool) folds in** as the conversation layer — chat
+- **`spaze` (the CLI chat tool) folds in** as the conversation layer - chat
   threads attachable to a ticket / repo, same identity, same git-backed sync.
 
 Design principle for all of the above: **it must always work and always sync**,
@@ -396,22 +422,24 @@ which means every new artifact is a plain file in the repo with an encoding the
 CLI tools can read and write losslessly. Build the data model first (round-trip
 tests), UI second. Captured here as direction, not committed scope.
 
-**Status:** mock-only desktop views now exist as previews — a **Ticketz**
-kanban board (`TicketzView.svelte`) and a **Spaze** chat view (`SpazeView.svelte`,
-modelled on the `spaze` TUI: rooms sidebar, `<name>` timeline, inline
-`#note`/`#todo` capture). Both render placeholder data; no backend/data model
-yet. The rail is now Notes / Todos / Tickets / Spaze.
+**Status:** both desktop views are now backed by **real org data via `gh`**
+(see "Real GitHub org data" above). **Ticketz** (`TicketzView.svelte`) reads real
+issues; **Spaze** (`SpazeView.svelte`, modelled on the `spaze` TUI: rooms
+sidebar, `<name>` timeline, inline `#note`/`#todo` capture) draws real rooms,
+members, and identity. The git-backed file-per-ticket data model is still the
+long-term target; GitHub Issues is the real backing in the meantime. The rail is
+Notes / Todos / Tickets / Spaze.
 
 ### Companion CLI tools to fold in (future)
 
 The same git-backed, GitHub-identity discipline extends to a few sibling CLI
 tools so the whole toolbelt shares one model:
 
-- **`epoz`** — git handling / workflow wrapper.
-- **`repoz`** — a broad repo-status command (scan many repos for dirty trees,
+- **`epoz`** - git handling / workflow wrapper.
+- **`repoz`** - a broad repo-status command (scan many repos for dirty trees,
   unpushed commits, etc.).
-- **a `repoz` "big brother"** — a larger umbrella over `repoz` (the user wrote
-  `epoz` again here; name to confirm — possibly a third distinct tool).
+- **a `repoz` "big brother"** - a larger umbrella over `repoz` (the user wrote
+  `epoz` again here; name to confirm - possibly a third distinct tool).
 
 These integrate by surfacing their data through the same desktop shell (e.g. a
 repo-status panel, git actions) rather than reimplementing them.
