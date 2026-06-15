@@ -244,6 +244,20 @@ auth lands; it already gives every view real identity + org data.
 - [ ] **Avatars on commits/issues**: commit authors already carry a real avatar
   URL; issue authors/assignees don't yet (the issues DTO leaves `avatar_url`
   null) - fetch them so ticketz/inspector show real faces.
+- [x] **All repos across owners, not one org.** `github_all_repos` lists every
+  reachable repo (owned / collaborator / org member) via `/user/repos`; a shared
+  `repoStore` holds the global active-repo selection, grouped by owner with
+  collapsible categories, a filter, and a 6-month archive threshold (dormant
+  repos hidden behind a toggle). `Ctrl+1-6` jumps between views.
+- [x] **Auto-generated backlog.** Seeded ~68 story-pointed GitHub issues across
+  11 active repos (airwavez x3, notez2, spaze, repoz, epoz, noiz-kmp, glanze,
+  clockz, bonsai-education) from each repo's README/design-docs/git-history -
+  backlog + in-progress + closed "done" waypoints, points via `sp:N` labels.
+- [ ] **bonsai-education/content + /socials backlog (blocked).** The `Gaurgle`
+  account has only **read** access on these two org repos, so labels/issues
+  couldn't be written. Grounded backlogs are prepared; needs Triage/Write to
+  create. (`bonsai-education/bonsai-education` got issues but no `sp:` labels for
+  the same reason - points show as default there.)
 
 ### Desktop dashboard + sync - open feedback (next)
 
