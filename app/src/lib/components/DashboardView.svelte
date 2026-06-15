@@ -30,9 +30,31 @@
     CalendarDays,
     Flame,
     RotateCcw,
+    ChevronDown,
+    ChevronRight,
   } from "lucide-svelte";
+  import { SvelteSet } from "svelte/reactivity";
 
   let { active = true }: { active?: boolean } = $props();
+
+  // Collapsed owner groups in the repo picker (persisted).
+  const COLLAPSE_KEY = "notez-dash-collapsed-owners-v1";
+  const collapsedOwners = new SvelteSet<string>();
+  try {
+    const stored = localStorage.getItem(COLLAPSE_KEY);
+    if (stored) for (const o of JSON.parse(stored) as string[]) collapsedOwners.add(o);
+  } catch {
+    /* ignore */
+  }
+  function toggleOwner(owner: string) {
+    if (collapsedOwners.has(owner)) collapsedOwners.delete(owner);
+    else collapsedOwners.add(owner);
+    try {
+      localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...collapsedOwners]));
+    } catch {
+      /* ignore */
+    }
+  }
 
   let now = $state(new Date());
   $effect(() => {
@@ -333,8 +355,12 @@
         {@const frepos = g.repos.filter(matchesFilter)}
         {#if frepos.length}
           {@const sel = g.repos.filter((r) => repoStore.selected.has(r.full_name)).length}
+          {@const open = !!repoFilter || !collapsedOwners.has(g.owner)}
           <div class="owner-row">
-            <span class="owner-name">{g.isMe ? "personal" : g.owner}</span>
+            <button class="owner-name" onclick={() => toggleOwner(g.owner)} title="Collapse / expand">
+              {#if open}<ChevronDown size={12} />{:else}<ChevronRight size={12} />{/if}
+              <span class="owner-text">{g.isMe ? "personal" : g.owner}</span>
+            </button>
             <button
               class="owner-toggle"
               title="Toggle all in {g.owner}"
@@ -343,13 +369,15 @@
               {sel}/{g.repos.length}
             </button>
           </div>
-          {#each frepos as r (r.full_name)}
-            <button class="item" class:active={repoStore.selected.has(r.full_name)} onclick={() => repoStore.toggle(r.full_name)}>
-              <span class="cbox" class:on={repoStore.selected.has(r.full_name)}></span>
-              <span class="item-label">{r.name}</span>
-              {#if r.is_private}<span class="lock" title="private">·</span>{/if}
-            </button>
-          {/each}
+          {#if open}
+            {#each frepos as r (r.full_name)}
+              <button class="item" class:active={repoStore.selected.has(r.full_name)} onclick={() => repoStore.toggle(r.full_name)}>
+                <span class="cbox" class:on={repoStore.selected.has(r.full_name)}></span>
+                <span class="item-label">{r.name}</span>
+                {#if r.is_private}<span class="lock" title="private">·</span>{/if}
+              </button>
+            {/each}
+          {/if}
         {/if}
       {/each}
       {#if repoStore.repos.length === 0}
@@ -1140,12 +1168,26 @@
     padding: 0.45rem 0.5rem 0.2rem;
   }
   .owner-name {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex: 1;
+    min-width: 0;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    font: inherit;
     font-size: 0.62rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--subtext);
     font-weight: 700;
-    flex: 1;
+  }
+  .owner-name:hover {
+    color: var(--text);
+  }
+  .owner-text {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
