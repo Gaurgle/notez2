@@ -8,17 +8,10 @@
   import MachineAvatar from "$lib/components/MachineAvatar.svelte";
   import WeatherWidget from "$lib/components/WeatherWidget.svelte";
   import { hashStr, relativeTime } from "$lib/mock";
-  import {
-    githubUser,
-    githubCommits,
-    githubIssues,
-    githubContributors,
-    githubContributionCalendar,
-    listNotes,
-    loadTodoBoard,
-  } from "$lib/ipc";
+  import { githubUser, githubContributionCalendar, listNotes, loadTodoBoard } from "$lib/ipc";
   import { repoStore } from "$lib/repos.svelte";
-  import type { GhCommit, GhIssue, GhContributor, GhUser, GhDay } from "$lib/types";
+  import { ensureActivity, activityCache, loadingRepos } from "$lib/activity.svelte";
+  import type { GhCommit, GhContributor, GhUser, GhDay } from "$lib/types";
   import {
     CloudSun,
     GitCommitHorizontal,
@@ -78,16 +71,10 @@
   // on which repos are active. The heavy per-repo fetches below re-run whenever
   // that selection changes.
   let user = $state<GhUser | null>(null);
-  let commits = $state<GhCommit[]>([]);
-  let issues = $state<GhIssue[]>([]);
-  let contributors = $state<GhContributor[]>([]);
   let noteCount = $state(0);
   let todoOpen = $state(0);
   let todoDone = $state(0);
   let calendarDays = $state<GhDay[]>([]); // repo-independent activity (green squares)
-  let loading = $state(true);
-  let loadError = $state<string | null>(null);
-  let fetchToken = 0;
 
   onMount(async () => {
     try {
@@ -117,53 +104,42 @@
     }
   });
 
-  // Re-fetch commits/issues/contributors whenever the active selection changes,
-  // debounced so rapid toggling doesn't fire a fetch storm of gh subprocesses.
+  // Load activity for the active repos — only while this view is visible (all
+  // views stay mounted), debounced, and through the shared bounded pool. Cached
+  // repos are instant; only new ones hit the network.
   $effect(() => {
+    if (!active) return;
     const names = repoStore.activeNames;
-    if (repoStore.loading) return;
-    loading = true; // reflect the pending fetch immediately
-    const token = ++fetchToken;
-    const timer = setTimeout(() => loadActive(names, token), 400);
+    if (repoStore.loading || names.length === 0) return;
+    const timer = setTimeout(() => ensureActivity(names), 250);
     return () => clearTimeout(timer);
   });
 
-  async function loadActive(names: string[], token: number) {
-    loading = true;
-    loadError = repoStore.error;
-    if (names.length === 0) {
-      commits = [];
-      issues = [];
-      contributors = [];
-      loading = false;
-      return;
+  // Aggregates derived from the shared cache (react as repos stream in).
+  let commits = $derived(
+    repoStore.activeNames
+      .flatMap((n) => activityCache.get(n)?.commits ?? [])
+      .sort((a, b) => b.date.localeCompare(a.date))
+  );
+  let issues = $derived(repoStore.activeNames.flatMap((n) => activityCache.get(n)?.issues ?? []));
+  // Contributors come from the commit authors we already have — no extra calls.
+  let contributors = $derived.by<GhContributor[]>(() => {
+    const map = new Map<string, GhContributor>();
+    for (const c of commits) {
+      const login = c.author_login ?? c.author;
+      if (!login) continue;
+      const ex = map.get(login);
+      if (ex) ex.contributions += 1;
+      else map.set(login, { login, avatar_url: c.avatar_url ?? "", contributions: 1 });
     }
-    try {
-      // Only the recent-commits feed needs commits now (the heatmap uses the
-      // contribution calendar), so a shallow per-repo fetch is plenty.
-      const [c, iss, ...contribLists] = await Promise.all([
-        githubCommits(names, 15),
-        githubIssues(names),
-        ...names.map((n) => githubContributors(n)),
-      ]);
-      if (token !== fetchToken) return; // a newer selection superseded this one
-      commits = c;
-      issues = iss;
-      const cmap = new Map<string, GhContributor>();
-      for (const list of contribLists as GhContributor[][]) {
-        for (const person of list) {
-          const existing = cmap.get(person.login);
-          if (existing) existing.contributions += person.contributions;
-          else cmap.set(person.login, { ...person });
-        }
-      }
-      contributors = [...cmap.values()].sort((a, b) => b.contributions - a.contributions);
-    } catch (e) {
-      if (token === fetchToken) loadError = String(e);
-    } finally {
-      if (token === fetchToken) loading = false;
-    }
-  }
+    return [...map.values()].sort((a, b) => b.contributions - a.contributions);
+  });
+  let loadError = $derived(repoStore.error);
+  // Still waiting on any selected repo's first load.
+  let loading = $derived(
+    repoStore.loading ||
+      repoStore.activeNames.some((n) => loadingRepos.has(n) || !activityCache.has(n))
+  );
 
   const firstName = $derived(user ? (user.name || user.login).split(" ")[0] : "you");
   /** Short repo name from a full owner/repo key. */
@@ -382,7 +358,12 @@
           </div>
           {#if open}
             {#each frepos as r (r.full_name)}
-              <button class="item" class:active={repoStore.selected.has(r.full_name)} onclick={() => repoStore.toggle(r.full_name)}>
+              <button
+                class="item"
+                class:active={repoStore.selected.has(r.full_name)}
+                class:loading={loadingRepos.has(r.full_name)}
+                onclick={() => repoStore.toggle(r.full_name)}
+              >
                 <span class="cbox" class:on={repoStore.selected.has(r.full_name)}></span>
                 <span class="item-label">{r.name}</span>
                 {#if r.is_private}<span class="lock" title="private">·</span>{/if}
@@ -637,6 +618,30 @@
   }
   .item:not(.active) .item-label {
     color: var(--faint);
+  }
+  /* per-repo loading: an indeterminate bar slides along the bottom edge */
+  .item.loading {
+    position: relative;
+    overflow: hidden;
+  }
+  .item.loading::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    height: 2px;
+    width: 40%;
+    background: var(--accent);
+    border-radius: 2px;
+    animation: repo-load 0.9s ease-in-out infinite;
+  }
+  @keyframes repo-load {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(350%);
+    }
   }
   .cbox {
     width: 14px;

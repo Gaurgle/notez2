@@ -6,8 +6,9 @@
   // backend yet, so messages you send stay local this session.
   import { onMount } from "svelte";
   import Avatar from "$lib/components/Avatar.svelte";
-  import { githubContributors, githubUser } from "$lib/ipc";
+  import { githubUser } from "$lib/ipc";
   import { repoStore } from "$lib/repos.svelte";
+  import { ensureActivity, activityCache } from "$lib/activity.svelte";
   import type { GhRepo } from "$lib/types";
   import { Hash, Send, Users } from "lucide-svelte";
 
@@ -25,7 +26,6 @@
 
   // Rooms are the active repos (full owner/repo keys), shared via repoStore.
   let rooms = $derived<GhRepo[]>(repoStore.activeRepos);
-  let memberCount = $state<Record<string, number>>({});
   let me = $state<{ login: string; avatar: string | null }>({ login: "you", avatar: null });
   let activeRoom = $state(""); // full owner/repo name
   let threads = $state<Record<string, Msg[]>>({});
@@ -43,7 +43,7 @@
     loading = false;
   });
 
-  // Seed rooms (intro line + member counts) as the active selection changes.
+  // Seed each room's intro line from its real description (cheap, no network).
   $effect(() => {
     const rs = rooms;
     if (!activeRoom && rs.length) activeRoom = rs[0].full_name;
@@ -54,10 +54,31 @@
       threads[r.full_name] = desc
         ? [{ author: me.login, time: "", text: desc, avatar: me.avatar }]
         : (threads[r.full_name] ?? []);
-      githubContributors(r.full_name)
-        .then((c) => (memberCount[r.full_name] = c.length))
-        .catch(() => (memberCount[r.full_name] = 0));
     }
+  });
+
+  // Fetch activity only while spaze is visible, through the shared pool.
+  $effect(() => {
+    if (!active) return;
+    const names = repoStore.activeNames;
+    if (repoStore.loading || names.length === 0) return;
+    const timer = setTimeout(() => ensureActivity(names), 250);
+    return () => clearTimeout(timer);
+  });
+
+  // Member counts = distinct commit authors per repo, from the shared cache
+  // (free — no extra GitHub calls).
+  let memberCount = $derived.by<Record<string, number>>(() => {
+    const out: Record<string, number> = {};
+    for (const r of rooms) {
+      const authors = new Set(
+        (activityCache.get(r.full_name)?.commits ?? [])
+          .map((c) => c.author_login ?? c.author)
+          .filter(Boolean)
+      );
+      out[r.full_name] = authors.size;
+    }
+    return out;
   });
 
   let draft = $state("");

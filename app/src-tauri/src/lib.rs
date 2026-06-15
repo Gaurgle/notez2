@@ -64,6 +64,7 @@ pub fn run() {
             github::github_create_issue,
             github::github_contributors,
             github::github_contribution_calendar,
+            github::github_repo_activity,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

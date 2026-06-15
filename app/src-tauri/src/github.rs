@@ -326,6 +326,27 @@ pub fn github_create_issue(repo: String, title: String, body: String) -> Result<
         .ok_or_else(|| format!("could not parse new issue number from: {}", out.trim()))
 }
 
+/// Commits + issues for a single repo, in one IPC round-trip. The frontend
+/// calls this per repo through a small concurrency pool so the work streams in
+/// (each call runs on a Tauri background thread) without spawning a `gh` storm.
+#[derive(Serialize)]
+pub struct GhRepoActivity {
+    pub repo: String,
+    pub commits: Vec<GhCommit>,
+    pub issues: Vec<GhIssue>,
+}
+
+#[tauri::command]
+pub fn github_repo_activity(repo: String, commit_limit: u32) -> Result<GhRepoActivity, String> {
+    let commits = github_commits(vec![repo.clone()], commit_limit)?;
+    let issues = github_issues(vec![repo.clone()])?;
+    Ok(GhRepoActivity {
+        repo,
+        commits,
+        issues,
+    })
+}
+
 /// The signed-in user's contribution calendar (last ~year), independent of any
 /// repo selection. This is the GitHub "green squares" activity, sourced in one
 /// GraphQL call so the dashboard heatmap stays stable as repos are toggled.

@@ -106,3 +106,10 @@ export const githubContributors = (repo: string) =>
 /** The signed-in user's contribution calendar (green squares), repo-independent. */
 export const githubContributionCalendar = () =>
   invoke<GhDay[]>("github_contribution_calendar");
+
+/** Commits + issues for one repo, in a single IPC round-trip. */
+export const githubRepoActivity = (repo: string, commitLimit = 15) =>
+  invoke<{ repo: string; commits: GhCommit[]; issues: GhIssue[] }>("github_repo_activity", {
+    repo,
+    commitLimit,
+  });

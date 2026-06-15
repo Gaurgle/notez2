@@ -10,13 +10,13 @@ import { SvelteSet } from "svelte/reactivity";
 import { githubAllRepos } from "./ipc";
 import type { GhRepo } from "./types";
 
-const SEL_KEY = "notez-active-repos-v1";
+const SEL_KEY = "notez-active-repos-v2";
 /** Repos untouched for longer than this are archived out of the picker. */
-const ARCHIVE_DAYS = 180;
+const ARCHIVE_DAYS = 90;
 /** How recent a repo must be to be auto-selected on first run. */
-const DEFAULT_ACTIVE_DAYS = 60;
+const DEFAULT_ACTIVE_DAYS = 30;
 /** Cap the first-run default so the initial data fetch stays snappy. */
-const DEFAULT_MAX = 8;
+const DEFAULT_MAX = 6;
 
 /** One owner's repos, for the grouped picker. */
 export interface RepoGroup {

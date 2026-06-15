@@ -10,10 +10,12 @@
   import MarkdownPreview from "$lib/components/MarkdownPreview.svelte";
   import Calendar from "$lib/components/Calendar.svelte";
   import Resizer from "$lib/components/Resizer.svelte";
-  import { githubIssues, githubUser, githubCreateIssue } from "$lib/ipc";
+  import { githubUser, githubCreateIssue } from "$lib/ipc";
   import { repoStore } from "$lib/repos.svelte";
+  import { ensureActivity, activityCache, invalidate, loadingRepos } from "$lib/activity.svelte";
+  import { SvelteSet } from "svelte/reactivity";
   import type { GhIssue } from "$lib/types";
-  import { Plus, Eye, Pencil, PanelRight, CalendarDays } from "lucide-svelte";
+  import { Plus, Eye, Pencil, PanelRight, CalendarDays, ChevronDown, ChevronRight } from "lucide-svelte";
 
   /** Short repo name from a full owner/repo key. */
   const shortName = (full: string) => full.split("/").pop() ?? full;
@@ -65,7 +67,6 @@
   let repoNames = $state<string[]>([]); // full owner/repo names (the active set)
   let TICKETS = $state<Ticket[]>([]);
   let me = $state("you");
-  let loading = $state(true);
   let loadError = $state<string | null>(null);
   let synth = 0;
   let fetchToken = 0;
@@ -113,40 +114,32 @@
     await repoStore.ensure(me);
   });
 
-  // Reload issues whenever the active repo selection changes, debounced so
-  // rapid toggling doesn't fire a storm of gh subprocesses.
+  // Build the board from the shared activity cache — but only while ticketz is
+  // visible (all views stay mounted), debounced, through the shared pool. Cached
+  // repos rebuild instantly; new ones stream in via ensureActivity.
   $effect(() => {
+    if (!active) return;
     const names = repoStore.activeNames;
     if (repoStore.loading) return;
-    loading = true;
+    repoNames = names;
     const token = ++fetchToken;
-    const timer = setTimeout(() => load(names, token), 400);
+    const timer = setTimeout(async () => {
+      await ensureActivity(names);
+      if (token === fetchToken) rebuildTickets(names);
+    }, 250);
     return () => clearTimeout(timer);
   });
 
-  async function load(names: string[], token: number) {
-    loading = true;
+  function rebuildTickets(names: string[]) {
+    synth = 0;
     loadError = repoStore.error;
-    repoNames = names;
-    if (names.length === 0) {
-      TICKETS = [];
-      loading = false;
-      return;
-    }
-    try {
-      const iss = await githubIssues(names);
-      if (token !== fetchToken) return;
-      synth = 0;
-      TICKETS = iss.map(toTicket);
-    } catch (e) {
-      if (token === fetchToken) {
-        loadError = String(e);
-        TICKETS = [];
-      }
-    } finally {
-      if (token === fetchToken) loading = false;
-    }
+    TICKETS = names.flatMap((n) => activityCache.get(n)?.issues ?? []).map(toTicket);
   }
+
+  // True while any active repo is still loading its first activity.
+  let loading = $derived(
+    repoStore.loading || repoNames.some((n) => loadingRepos.has(n) || !activityCache.has(n))
+  );
 
   // Project members = whoever is actually assigned/authoring in that repo.
   function membersFor(project: string): string[] {
@@ -167,6 +160,29 @@
       count: TICKETS.filter((t) => t.project === full).length,
     }))
   );
+
+  // Sidebar projects grouped by owner (personal first, then orgs), collapsible.
+  let projectGroups = $derived.by(() => {
+    const byOwner = new Map<string, typeof PROJECTS>();
+    for (const p of PROJECTS) {
+      const owner = p.full.split("/")[0];
+      const list = byOwner.get(owner) ?? [];
+      list.push(p);
+      byOwner.set(owner, list);
+    }
+    const groups = [...byOwner.entries()].map(([owner, repos]) => ({
+      owner,
+      isMe: owner === me,
+      repos,
+    }));
+    groups.sort((a, b) => (a.isMe ? 0 : 1) - (b.isMe ? 0 : 1) || a.owner.localeCompare(b.owner));
+    return groups;
+  });
+  const collapsedOwners = new SvelteSet<string>();
+  function toggleOwner(o: string) {
+    if (collapsedOwners.has(o)) collapsedOwners.delete(o);
+    else collapsedOwners.add(o);
+  }
 
   let activeProject = $state<string | null>(null);
   let sidebarWidth = $state(185);
@@ -236,9 +252,12 @@
     if (!draft || !draft.title.trim() || !draft.repo) return;
     creating = true;
     try {
-      await githubCreateIssue(draft.repo, draft.title.trim(), draft.body);
+      const repo = draft.repo;
+      await githubCreateIssue(repo, draft.title.trim(), draft.body);
       draft = null;
-      await load(repoNames, ++fetchToken);
+      invalidate(repo); // force a refetch of just that repo
+      await ensureActivity(repoNames);
+      rebuildTickets(repoNames);
     } catch (e) {
       loadError = String(e);
     } finally {
@@ -323,19 +342,31 @@
         <span class="item-label">All projects</span>
         <span class="count">{TICKETS.length}</span>
       </button>
-      {#each PROJECTS as p (p.full)}
-        <button
-          class="item"
-          class:active={activeProject === p.full}
-          onclick={() => (activeProject = p.full)}
-          onmouseenter={() => (hoveredProject = p.full)}
-          onmouseleave={() => hoveredProject === p.full && (hoveredProject = null)}
-        >
-          <span class="item-label">{p.name}</span>
-          <span class="count">{p.count}</span>
-        </button>
+      {#each projectGroups as g (g.owner)}
+        {@const open = !collapsedOwners.has(g.owner)}
+        <div class="owner-row">
+          <button class="owner-name" onclick={() => toggleOwner(g.owner)} title="Collapse / expand">
+            {#if open}<ChevronDown size={12} />{:else}<ChevronRight size={12} />{/if}
+            <span class="owner-text">{g.isMe ? "personal" : g.owner}</span>
+          </button>
+        </div>
+        {#if open}
+          {#each g.repos as p (p.full)}
+            <button
+              class="item"
+              class:active={activeProject === p.full}
+              class:loading={loadingRepos.has(p.full)}
+              onclick={() => (activeProject = p.full)}
+              onmouseenter={() => (hoveredProject = p.full)}
+              onmouseleave={() => hoveredProject === p.full && (hoveredProject = null)}
+            >
+              <span class="item-label">{p.name}</span>
+              <span class="count">{p.count}</span>
+            </button>
+          {/each}
+        {/if}
       {/each}
-      {#if PROJECTS.length === 0}
+      {#if projectGroups.length === 0}
         <div class="proj-empty">{loading ? "loading…" : "no active repos — pick some on Home"}</div>
       {/if}
     </nav>
@@ -654,6 +685,61 @@
   .item .count {
     font-size: 0.68rem;
     color: var(--subtext);
+  }
+  /* owner group header in the projects sidebar */
+  .owner-row {
+    display: flex;
+    align-items: center;
+    padding: 0.4rem 0.5rem 0.15rem;
+  }
+  .owner-name {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex: 1;
+    min-width: 0;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--subtext);
+    font-weight: 700;
+  }
+  .owner-name:hover {
+    color: var(--text);
+  }
+  .owner-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* per-repo loading bar */
+  .item.loading {
+    position: relative;
+    overflow: hidden;
+  }
+  .item.loading::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    height: 2px;
+    width: 40%;
+    background: var(--accent);
+    border-radius: 2px;
+    animation: repo-load 0.9s ease-in-out infinite;
+  }
+  @keyframes repo-load {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(350%);
+    }
   }
   .title {
     font-weight: 700;
