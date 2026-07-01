@@ -444,6 +444,15 @@ members, and identity. The git-backed file-per-ticket data model is still the
 long-term target; GitHub Issues is the real backing in the meantime. The rail is
 Notes / Todos / Tickets / Spaze.
 
+**Decision (2026-07-01): keep GitHub Issues as the ticket storage.** Tickets
+stay backed by real GitHub Issues (read/written via `gh`) rather than building
+the file-per-ticket model now. Rationale: Issues already sync through GitHub,
+carry identity and assignees for free, and the board already reads them live, so
+this keeps the "always works, always syncs" principle without new infrastructure.
+The git-backed file-per-ticket model remains the long-term target but is
+deferred; revisit if Issues become limiting (offline-first editing, custom
+fields, or lossless round-trip with the CLI tools).
+
 ### Companion CLI tools to fold in (future)
 
 The same git-backed, GitHub-identity discipline extends to a few sibling CLI
