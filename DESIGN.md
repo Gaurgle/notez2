@@ -153,17 +153,29 @@ Same as notez-cli:
 
 ## Migration from notez-cli
 
-`notez migrate-from-legacy` reads:
-- `~/.config/notez/config` (old kv format)
-- `~/.config/notez/projects` (old `name=path`)
-- `~/notez/NN_*` symlinked directories
+**Implemented** (`notez migrate-from-legacy`, with `--dry-run`; logic in
+`notez-core/src/migrate.rs`, also reachable from epoz's MigrationDialog). It
+reads the legacy `~/.config/notez/projects` (`name=path`) and, for every
+`~/notez/NN_<name>` dir whose stripped name matches a legacy project:
 
-And produces:
-- `~/.config/notez/config.toml` (new TOML config)
-- `~/.config/notez/registry.toml` (new project registry)
-- `~/notez/.notez-config.toml` (new synced metadata)
+1. Moves the dir to `<notez_root>/personal/<name>/` and attaches the project
+   to the per-machine `registry.toml`. Existing destinations are merged
+   entry-by-entry; collisions are never overwritten, only reported.
+2. Materializes the legacy symlink mirrors: links into a repo's `.notez/`
+   (private store) are replaced by the real file, moved here - personal scope
+   owns it now. Links into a repo's `notez/` (public store) are just dropped;
+   those files already sit exactly where notez2's public scope wants them.
+   Dangling links are pruned.
 
-It does not touch the actual note files; it only re-writes the index layer. Old symlinks remain until the user deletes them. A `--clean` flag also removes the old symlinks after verifying every target is reachable via the new registry.
+Global dirs (quick-notes, daily-logs, `_todos`) and unmatched dirs are left
+untouched. `config.toml` and `.notez-config.toml` are not generated - write
+those once by hand or via `notez setup`.
+
+Executed for real on 2026-07-05 (this machine): 11 project dirs migrated, the
+duplicate/empty numbered dirs removed, `~/notes` (the pre-notez knowledge
+base) consolidated into `~/notez/reference/`, and the legacy binaries in
+`~/.local/bin` replaced by notez2 builds. `~/notez/` now contains zero
+symlinks and no numbered project dirs.
 
 ## Open questions and future work
 
@@ -453,19 +465,24 @@ The git-backed file-per-ticket model remains the long-term target but is
 deferred; revisit if Issues become limiting (offline-first editing, custom
 fields, or lossless round-trip with the CLI tools).
 
-### Companion CLI tools to fold in (future)
+### Naming and companion tools (decided 2026-07-05)
 
-The same git-backed, GitHub-identity discipline extends to a few sibling CLI
-tools so the whole toolbelt shares one model:
+**epoz is the desktop app in `app/`; notez2 is the CLI/core.** Same data
+model, two surfaces. This resolves the earlier "repoz big brother" naming
+confusion: the standalone ratatui multi-repo dashboard TUI that used to hold
+the epoz name was renamed **fleetz** and lives on as a repoz sibling.
 
-- **`epoz`** - git handling / workflow wrapper.
-- **`repoz`** - a broad repo-status command (scan many repos for dirty trees,
-  unpushed commits, etc.).
-- **a `repoz` "big brother"** - a larger umbrella over `repoz` (the user wrote
-  `epoz` again here; name to confirm - possibly a third distinct tool).
+The sibling CLI tools share the same git-backed, GitHub-identity discipline:
 
-These integrate by surfacing their data through the same desktop shell (e.g. a
-repo-status panel, git actions) rather than reimplementing them.
+- **`fleetz`** (formerly the epoz TUI) - live multi-repo dashboard: CI, PRs,
+  ahead/behind, worktrees, stashes. Roadmap: true realtime refresh and
+  first-class worktree operations (see its README).
+- **`repoz`** - the snapshot repo-status command; a repoz-owned TUI is wanted,
+  sharing a data layer with fleetz rather than duplicating it.
+
+Their capabilities (repo fleet status, CI/PR state, worktrees) are also
+roadmap items for epoz's Dashboard view, surfaced through the same desktop
+shell rather than reimplemented ad hoc.
 
 ## Test scenarios
 

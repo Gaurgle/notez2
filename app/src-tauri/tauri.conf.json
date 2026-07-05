@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "notez",
+  "productName": "epoz",
   "version": "0.1.0",
-  "identifier": "com.notez.desktop",
+  "identifier": "com.epoz.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "macOSPrivateApi": true,
     "windows": [
       {
-        "title": "notez",
+        "title": "epoz",
         "width": 1100,
         "height": 720,
         "transparent": true,

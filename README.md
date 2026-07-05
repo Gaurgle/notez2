@@ -1,6 +1,8 @@
 # notez2
 
-A local-first note-taking tool with a CLI/TUI **and** a native desktop app. Cross-machine portable rewrite of [notez-cli](https://github.com/Gaurgle/notez-cli).
+A local-first note-taking tool with a CLI/TUI **and** a native desktop app. Cross-machine portable rewrite of [notez-cli](https://github.com/Gaurgle/notez-cli) (now deprecated).
+
+**Naming:** notez2 is the CLI and core (`crates/`); the desktop app in `app/` is **epoz**. Same data model, two surfaces. (The epoz name previously belonged to a standalone repo-dashboard TUI, which lives on as **fleetz**.)
 
 ## What it is
 
@@ -17,10 +19,10 @@ A Cargo workspace plus a Tauri/Svelte frontend:
 ```
 crates/notez-core/   # scopes, aggregation, todoz model, tags (GUI-agnostic)
 crates/notez-cli/    # the `notez` binary (+ todoz/zlog symlink dispatch)
-app/                 # desktop app: Tauri (Rust) backend + SvelteKit frontend
+app/                 # epoz, the desktop app: Tauri (Rust) + SvelteKit frontend
 ```
 
-## Desktop app
+## Desktop app (epoz)
 
 A native desktop app (Tauri + SvelteKit + TypeScript, CodeMirror 6 editor) that reads and writes the same files as the CLI, byte-for-byte, so notes round-trip through `notez`, `nvim`, and the GUI without spurious diffs.
 
@@ -30,7 +32,7 @@ A native desktop app (Tauri + SvelteKit + TypeScript, CodeMirror 6 editor) that 
 - Markdown editor with optional **vim mode** (toggle with the footer pill or `Ctrl+;`, with a NORMAL/INSERT/VISUAL badge) and a separate, resizable, togglable **live preview** pane.
 - Right-side inspector (scope, project, path, tags) and a status-bar footer.
 - Sort by latest touch / oldest / name, across any scope or project.
-- Importance tags (`1`–`5`), vim + arrow-key navigation, `/` and `Cmd/Ctrl+F` to search.
+- Importance tags (`1`-`5`), vim + arrow-key navigation, `/` and `Cmd/Ctrl+F` to search.
 
 **Todoz**
 - Interactive tree todo board: tri-state checkboxes, 5 importance tags, subtasks, sections, drag-to-reorder.
@@ -55,8 +57,15 @@ The CLI surface mirrors notez-cli's. Working today:
 notez add        notez log         notez mkdir
 notez attach     notez detach      notez list
 notez sync       notez setup       notez completions
-notez init       notez --help
+notez init       notez --help      notez migrate-from-legacy
+todoz "item"     (quick-add; the todoz TUI itself is not ported yet)
 ```
+
+`notez migrate-from-legacy` (with `--dry-run`) is the one-time port of a
+notez-cli layout: numbered `NN_project` mirror dirs move to `personal/<project>/`,
+repo-private symlink targets are materialized as real files, public-store links
+are dropped (those files already live in the repo), and the projects are
+attached to the per-machine registry.
 
 ```bash
 cargo build --release
@@ -69,8 +78,8 @@ See [DESIGN.md](DESIGN.md) for the architecture, scope model, and test-scenario 
 
 Planned, not yet built (details in [DESIGN.md](DESIGN.md) → *Open questions and future work*):
 
-- **Dates & calendar for todos** — tag a todo with a **deadline** or **event** date and surface it on a calendar. The todoz preview pane already hosts a placeholder calendar; the open decision is the `@date` encoding inside `TODO.md` so it round-trips through the `notez` / `todoz` CLI byte-for-byte (mirroring how `#tags` already work).
-- **Scope migration** — move a note or todo between scopes (e.g. `personal → public`) without losing history.
+- **Dates & calendar for todos** - tag a todo with a **deadline** or **event** date and surface it on a calendar. The todoz preview pane already hosts a placeholder calendar; the open decision is the `@date` encoding inside `TODO.md` so it round-trips through the `notez` / `todoz` CLI byte-for-byte (mirroring how `#tags` already work).
+- **Scope migration** - move a note or todo between scopes (e.g. `personal → public`) without losing history.
 
 ## License
 
