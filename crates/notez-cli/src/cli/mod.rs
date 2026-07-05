@@ -178,6 +178,14 @@ pub enum Commands {
 
     /// Sync the global notez root with its git remote.
     Sync,
+
+    /// One-time migration of the legacy notez-cli layout (numbered dirs +
+    /// symlinks) into the scope model. Repo-private notes become personal.
+    MigrateFromLegacy {
+        /// Print the plan without changing anything
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 /// Split free-form args into title words and an optional quoted body.

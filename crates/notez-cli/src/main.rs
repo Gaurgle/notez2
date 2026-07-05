@@ -113,6 +113,9 @@ fn main() -> ExitCode {
         }),
         Commands::List => commands::list::run(&config),
         Commands::Sync => commands::sync::run(&config),
+        Commands::MigrateFromLegacy { dry_run } => {
+            commands::migrate::run(dry_run, &config)
+        }
     };
 
     finish(result)
@@ -147,6 +150,7 @@ fn rewrite_for_symlink(mut argv: Vec<String>) -> Vec<String> {
         "todoz" => Some("todoz"),
         "zlog" => Some("zlog"),
         "logz" => Some("logz"),
+        "zlogs" => Some("logs"),
         "znote" => Some("znote"),
         "treez" => Some("treez"),
         "editz" => Some("editz"),
@@ -233,6 +237,7 @@ fn print_help() {
 
     println!("  {}", mauve.apply_to("Setup"));
     cmd("notez setup", "create default config");
+    cmd("notez migrate-from-legacy", "one-time import of the old notez-cli layout");
     cmd("notez completions <shell>", "generate shell completions");
     cmd("notez init <shell>", "shell-integration eval snippet");
     println!();

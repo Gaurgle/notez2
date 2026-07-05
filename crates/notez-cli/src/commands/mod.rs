@@ -11,6 +11,7 @@ pub mod edit;
 pub mod init;
 pub mod list;
 pub mod log;
+pub mod migrate;
 pub mod mkdir;
 pub mod nav;
 pub mod search;

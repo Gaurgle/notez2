@@ -37,13 +37,14 @@ pub fn metadata_file(notez_root: &std::path::Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
+    #[serial]
     fn config_dir_falls_back_to_home_config() {
-        // Clear XDG so we exercise the fallback.
+        // Clear XDG so we exercise the fallback. The serial lock is shared
+        // with every other test that mutates XDG_CONFIG_HOME (e.g. migrate).
         let saved = std::env::var("XDG_CONFIG_HOME").ok();
-        // SAFETY: tests run sequentially in this module; no other thread
-        // looks at this var here.
         unsafe {
             std::env::remove_var("XDG_CONFIG_HOME");
         }
@@ -60,6 +61,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn config_dir_respects_xdg_config_home() {
         let saved = std::env::var("XDG_CONFIG_HOME").ok();
         unsafe {
