@@ -73,10 +73,9 @@ fn main() -> ExitCode {
                 println!("Appended to: {}", p.display());
             })
         }
-        Commands::Logz | Commands::Logs => {
-            println!("Open daily logs: not yet implemented in milestone 0");
-            Ok(())
-        }
+        Commands::Logz | Commands::Logs => Err(anyhow::anyhow!(
+            "browsing daily logs is not yet implemented in notez2; coming in the next milestone"
+        )),
         Commands::Mkdir { name } => commands::mkdir::run(name, scope, &config).map(|p| {
             println!("Created: {}", p.display());
         }),
@@ -85,10 +84,9 @@ fn main() -> ExitCode {
         }
         Commands::Tree | Commands::Treez => commands::tree::run(scope, &config),
         Commands::Setup => commands::setup::run(),
-        Commands::Demo { view: _ } => {
-            println!("demo: not yet implemented in milestone 0");
-            Ok(())
-        }
+        Commands::Demo { view: _ } => Err(anyhow::anyhow!(
+            "demo is not yet implemented in notez2; coming in the next milestone"
+        )),
         Commands::Completions { shell } => commands::completions::run(&shell),
         Commands::Init { shell } => commands::init::run(&shell),
         Commands::Todo { item } | Commands::Todoz { item } => {
@@ -107,6 +105,9 @@ fn main() -> ExitCode {
                 notez_core::util::tilde::contract(&r.local_path),
                 suffix,
             );
+            if r.created_public_store {
+                println!("Created notez/ for public notes.");
+            }
         }),
         Commands::Detach { name } => commands::detach::run(name).map(|_| {
             println!("Detached.");
@@ -204,14 +205,15 @@ fn print_help() {
     println!("  {}", mauve.apply_to("Notes"));
     cmd("notez add [title]", "create a private note");
     cmd("notez add [title] \"body\"", "create with content");
+    cmd("notez add --in <dir>", "create inside a subdirectory (bare --in: fzf picker)");
     cmd("notez -p add [title]", "create public note");
     cmd("notez -g add [title]", "create global note");
-    cmd("notez edit [term]", "open an existing note");
+    cmd("notez edit [term]", "open an existing note (not ported yet)");
     println!();
 
     println!("  {}", mauve.apply_to("Daily Logs"));
     cmd("notez log <message>", "append to today's log");
-    cmd("notez logz / logs", "browse daily logs");
+    cmd("notez logz / logs", "browse daily logs (not ported yet)");
     println!();
 
     println!("  {}", mauve.apply_to("Todos"));
@@ -242,26 +244,37 @@ fn print_help() {
     cmd("notez init <shell>", "shell-integration eval snippet");
     println!();
 
-    println!("  {}", overlay.apply_to("Scope flags:"));
+    println!("  {}", mauve.apply_to("Alias binaries"));
+    cmd(
+        "todoz zlog znote treez logz",
+        "standalone names for the same commands",
+    );
+    cmd("editz findz zlogs", "(installed as symlinks to notez)");
+    println!();
+
     println!(
-        "    {} {}",
-        sapphire.apply_to("(default)"),
-        overlay.apply_to("personal: ~/notez/personal/<project>/ (your notes, synced via your own remote)"),
+        "  {}",
+        overlay.apply_to("Scope flags (accessibility x binding):"),
     );
     println!(
         "    {} {}",
-        sapphire.apply_to("-l"),
-        overlay.apply_to("local:    ./.notez/ (gitignored, this machine only)"),
+        sapphire.apply_to("(default)"),
+        overlay.apply_to("personal+project: ~/notez/personal/<project>/ (private, syncs across your machines)"),
     );
     println!(
         "    {} {}",
         sapphire.apply_to("-p"),
-        overlay.apply_to("public:   ./notez/ (committed with the project, visible to team)"),
+        overlay.apply_to("public+project:   ./notez/ (committed with the repo, shared with collaborators)"),
     );
     println!(
         "    {} {}",
         sapphire.apply_to("-g"),
-        overlay.apply_to("global:   ~/notez/ (cross-project, synced via your own remote)"),
+        overlay.apply_to("personal+global:  ~/notez/ (your notez repo, notes bound to no project)"),
+    );
+    println!(
+        "    {} {}",
+        sapphire.apply_to("-l"),
+        overlay.apply_to("scratch:          ./.notez/ (gitignored, this machine only, never syncs)"),
     );
     println!();
 }

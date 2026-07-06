@@ -15,7 +15,7 @@ A from-scratch rewrite of [notez-cli](https://github.com/Gaurgle/notez-cli) with
 
 Four scopes. The TUI aggregates them into one view at runtime.
 
-**Local** (`<project>/.notez/`, gitignored):
+**Local** (`<project>/.notez/`, auto-gitignored on first write):
 - Per-machine scratch. Truly private, never syncs anywhere.
 - Falls back to `<cwd>/.notez/` even outside a git repo.
 - For ephemeral notes that don't need to follow you.
@@ -51,12 +51,15 @@ No symlinks, no encryption, no extra remotes to set up per project.
 
 ### Scope flags
 
-| Flag | Scope | Where |
+Two axes: accessibility (personal vs public) x binding (project vs global),
+plus the machine-only scratch tier. See "Two-axis scope language" below.
+
+| Flag | Meaning | Where |
 |---|---|---|
-| _(default)_ | Personal | `<notez_root>/personal/<project>/` |
-| `-l` `--local` | Local | `<cwd>/.notez/` |
-| `-p` `--public` | Public | `<cwd>/notez/` |
-| `-g` `--global` | Global | `<notez_root>/` |
+| _(default)_ | personal + project | `<notez_root>/personal/<project>/` |
+| `-p` `--public` | public + project | `<cwd>/notez/` |
+| `-g` `--global` | personal + global | `<notez_root>/` |
+| `-l` `--local` | scratch (this machine) | `<cwd>/.notez/` |
 
 ## Config files
 
@@ -464,6 +467,26 @@ this keeps the "always works, always syncs" principle without new infrastructure
 The git-backed file-per-ticket model remains the long-term target but is
 deferred; revisit if Issues become limiting (offline-first editing, custom
 fields, or lossless round-trip with the CLI tools).
+
+### Two-axis scope language (decided 2026-07-06)
+
+Scopes are presented as two axes, not four silos:
+
+- **Accessibility**: personal (private to the user, syncs via their own
+  notez repo) vs public (committed in the project repo, shared with
+  collaborators).
+- **Binding**: project (attached to a repo) vs global (the `~/notez` repo
+  itself, for notes bound to no project).
+
+Valid combos and their storage (unchanged): personal+project =
+`<notez_root>/personal/<project>/`; public+project = `<repo>/notez/`;
+personal+global = `<notez_root>/`. public+global does not exist (the notez
+repo is private). A fourth tier is kept by explicit decision: **scratch**
+(`<repo>/.notez/`, gitignored, this machine only, never syncs), renamed
+from the confusing "local" in every UI; the CLI `-l` flag and the on-disk
+layout and wire values (`local`) are unchanged. This is display language
+only; the `Scope` enum and serde stay as they were. Attaching a project now
+also scaffolds `<path>/notez/` so the public store exists from day one.
 
 ### Search + project docs + safe saves (landed 2026-07-06)
 

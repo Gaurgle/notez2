@@ -32,9 +32,17 @@ export const readNote = (path: string) => invoke<string>("read_note", { path });
 export const setNoteTags = (path: string, flags: number) =>
   invoke<void>("set_note_tags", { path, flags });
 
-/** Create a new note; resolves to the new file's path. */
-export const createNote = (scope: Scope, title: string, body: string | null) =>
-  invoke<string>("create_note", { scope, title, body });
+/** Create a new note; resolves to the new file's path. `dir` targets a
+ *  folder under the notez root (global scope only). */
+export const createNote = (
+  scope: Scope,
+  title: string,
+  body: string | null,
+  dir: string | null = null
+) => invoke<string>("create_note", { scope, title, body, dir });
+
+/** Absolute path of the global notez root (for the sidebar folder tree). */
+export const notezRoot = () => invoke<string>("notez_root");
 
 /** Overwrite a note's contents. */
 export const saveNote = (path: string, content: string) =>

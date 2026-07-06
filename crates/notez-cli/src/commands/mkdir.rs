@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use anyhow::{Context, Result, bail};
 
 use notez_core::config::Config;
-use notez_core::core::{Scope, resolve};
+use notez_core::core::{Scope, project, resolve};
 use notez_core::util::sanitize;
 
 /// Create the directory. Returns its absolute path.
@@ -20,6 +20,9 @@ pub fn run(name_words: Vec<String>, scope: Scope, config: &Config) -> Result<Pat
     let path = root.join(&cleaned);
     std::fs::create_dir_all(&path)
         .with_context(|| format!("failed to create directory {}", path.display()))?;
+    if scope == Scope::Local {
+        project::ensure_scratch_gitignored(&path);
+    }
 
     Ok(path)
 }

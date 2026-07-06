@@ -16,6 +16,8 @@ pub struct AttachResult {
     pub name: String,
     pub local_path: PathBuf,
     pub already_existed: bool,
+    /// True when `<path>/notez/` was scaffolded by this attach.
+    pub created_public_store: bool,
 }
 
 pub fn run(name: Option<String>, path: Option<String>) -> Result<AttachResult> {
@@ -48,10 +50,16 @@ pub fn run_with_registry(
     registry.attach(&name, &local_path);
     save(registry)?;
 
+    // Scaffold the public store so the project can host public notes right
+    // away; a failure here should not undo the registration.
+    let created_public_store =
+        notez_core::core::project::ensure_public_store(&local_path).unwrap_or(false);
+
     Ok(AttachResult {
         name,
         local_path,
         already_existed,
+        created_public_store,
     })
 }
 

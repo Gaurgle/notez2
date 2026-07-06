@@ -14,6 +14,19 @@ export interface NoteListItem {
   modified: number;
 }
 
+/** One folder in the global notez root, for the sidebar tree. */
+export interface FolderNode {
+  /** Last path segment, e.g. "Kotlin". */
+  name: string;
+  /** Path relative to the notez root, e.g. "reference/Kotlin". */
+  rel: string;
+  /** Notes in this subtree. */
+  count: number;
+  /** Newest modified epoch in this subtree. */
+  latest: number;
+  children: FolderNode[];
+}
+
 /** One full-text search hit, anchored at its first matching line. */
 export interface SearchHit {
   path: string;
@@ -31,11 +44,37 @@ export interface SearchHit {
   name_match: boolean;
 }
 
-export const SCOPE_META: Record<Scope, { label: string; icon: string }> = {
-  personal: { label: "Personal", icon: "" },
-  public: { label: "Public", icon: "" },
-  local: { label: "Local", icon: "" },
-  global: { label: "Global", icon: "" },
+// Two-axis scope language (decided 2026-07-06): accessibility (personal vs
+// public) x binding (project vs global). "local" is kept on the wire but
+// presented as scratch: this machine only, never syncs.
+export const SCOPE_META: Record<
+  Scope,
+  { label: string; pill: string; hint: string; icon: string }
+> = {
+  personal: {
+    label: "Personal",
+    pill: "personal",
+    hint: "Your private notez repo, synced across your machines",
+    icon: "",
+  },
+  public: {
+    label: "Public",
+    pill: "public",
+    hint: "Committed in the project repo, visible to collaborators",
+    icon: "",
+  },
+  local: {
+    label: "Scratch",
+    pill: "scratch",
+    hint: "This machine only, gitignored, never syncs",
+    icon: "",
+  },
+  global: {
+    label: "notez (global)",
+    pill: "notez",
+    hint: "Your private notez repo, notes bound to no project",
+    icon: "",
+  },
 };
 
 export interface ProjectInfo {

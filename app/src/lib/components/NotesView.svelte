@@ -41,8 +41,9 @@
     detachProject,
     syncNotez,
     searchNotes,
+    notezRoot,
   } from "$lib/ipc";
-  import type { NoteListItem, ProjectInfo, Scope, SearchHit } from "$lib/types";
+  import type { FolderNode, NoteListItem, ProjectInfo, Scope, SearchHit } from "$lib/types";
 
   let { active = true }: { active?: boolean } = $props();
 
@@ -52,6 +53,9 @@
 
   let activeScope = $state<Scope | "all" | "docs">("all");
   let activeProject = $state<string | null>(null);
+  /** Selected folder in the global notez tree, as a root-relative path. */
+  let activeFolder = $state<string | null>(null);
+  let notezRootPath = $state("");
   let searchText = $state("");
   let searchEl = $state<HTMLInputElement>();
   const focusSearch = () => {
@@ -62,13 +66,59 @@
   function setScope(s: Scope | "all" | "docs") {
     activeScope = s;
     activeProject = null;
+    activeFolder = null;
     selIndex = 0;
   }
   function setProject(p: string | null) {
     activeProject = p;
     activeScope = "all";
+    activeFolder = null;
     selIndex = 0;
   }
+  function setFolder(rel: string | null) {
+    activeFolder = rel;
+    // A folder is a slice of the global scope; drop competing filters.
+    activeScope = rel === null ? "global" : "all";
+    activeProject = null;
+    selIndex = 0;
+  }
+
+  /** ~-contracted root for display (macOS/Linux home prefixes). */
+  let notezRootDisplay = $derived(notezRootPath.replace(/^\/(Users|home)\/[^/]+/, "~"));
+
+  // Folder tree of the global notez root, derived from the loaded notes:
+  // every global note's root-relative dir chain becomes a node, with counts
+  // and latest-modified rolled up per subtree. Loose root files count toward
+  // the header but create no node.
+  let folderTree = $derived.by<FolderNode[]>(() => {
+    if (!notezRootPath) return [];
+    const prefix = notezRootPath + "/";
+    const roots: FolderNode[] = [];
+    for (const n of notes) {
+      if (n.scope !== "global" || n.project !== null || !n.path.startsWith(prefix)) continue;
+      const segments = n.path.slice(prefix.length).split("/");
+      if (segments.length < 2) continue; // loose file at the root
+      let level = roots;
+      let rel = "";
+      for (const seg of segments.slice(0, -1)) {
+        rel = rel ? rel + "/" + seg : seg;
+        let node = level.find((f) => f.rel === rel);
+        if (!node) {
+          node = { name: seg, rel, count: 0, latest: 0, children: [] };
+          level.push(node);
+        }
+        node.count += 1;
+        node.latest = Math.max(node.latest, n.modified);
+        level = node.children;
+      }
+    }
+    const sortRec = (nodes: FolderNode[]) => {
+      nodes.sort((a, b) => a.name.localeCompare(b.name));
+      nodes.forEach((f) => sortRec(f.children));
+    };
+    sortRec(roots);
+    return roots;
+  });
 
   let selectedPath = $state<string | null>(null);
   let selIndex = $state(0);
@@ -108,8 +158,30 @@
 
   // Hovering a scope/project in the sidebar shows that group's contributors +
   // activity in the inspector; otherwise the inspector reflects the note.
-  let hoveredNav = $state<{ kind: "scope" | "project"; name: string } | null>(null);
+  let hoveredNav = $state<{ kind: "scope" | "project" | "folder"; name: string } | null>(
+    null
+  );
   let insp = $derived.by(() => {
+    if (hoveredNav?.kind === "folder") {
+      const nav = hoveredNav;
+      const prefix = notezRootPath + "/" + nav.name + "/";
+      const set = notes.filter((n) => n.scope === "global" && n.path.startsWith(prefix));
+      const latest = set.reduce((m, n) => Math.max(m, n.modified), 0);
+      return {
+        title: nav.name.split("/").pop() ?? nav.name,
+        scope: "global" as string | null,
+        kind: null as string | null,
+        project: null as string | null,
+        flags: 0,
+        showTags: false,
+        people: [] as string[],
+        time: latest ? relativeTime(latest) : null,
+        rows: [
+          { label: "Folder", value: "~/" + nav.name },
+          { label: "Notes", value: String(set.length) },
+        ],
+      };
+    }
     if (hoveredNav) {
       const nav = hoveredNav;
       const isScope = nav.kind === "scope";
@@ -253,6 +325,9 @@
         (activeScope === "all" ||
           (activeScope === "docs" ? n.kind === "doc" : n.scope === activeScope)) &&
         (activeProject === null || n.project === activeProject) &&
+        (activeFolder === null ||
+          (n.scope === "global" &&
+            n.path.startsWith(notezRootPath + "/" + activeFolder + "/"))) &&
         (selectedDays.size === 0 || selectedDays.has(noteDay(n)))
     )
   );
@@ -314,6 +389,11 @@
       loading = false;
     });
     loadProjects(); // parallel, non-blocking
+    notezRoot()
+      .then((r) => (notezRootPath = r))
+      .catch(() => {
+        /* tree section stays empty without the root */
+      });
   });
 
   // Re-read notes from disk when the window regains focus, so changes made by
@@ -494,10 +574,15 @@
     }
   }
 
-  async function onCreate(scope: Scope, title: string, body: string | null) {
+  async function onCreate(
+    scope: Scope,
+    title: string,
+    body: string | null,
+    dir: string | null
+  ) {
     showNewNote = false;
     try {
-      const path = await createNote(scope, title, body);
+      const path = await createNote(scope, title, body, dir);
       await refresh(path);
       flash("Note created");
     } catch (e) {
@@ -526,9 +611,13 @@
     {notes}
     {activeScope}
     {activeProject}
+    {activeFolder}
+    folders={folderTree}
+    {notezRootDisplay}
     registeredProjects={projects}
     onScope={setScope}
     onProject={setProject}
+    onFolder={setFolder}
     onAttach={() => (showAttach = true)}
     {onDetach}
     onMigrate={() => (showMigrate = true)}
@@ -675,7 +764,12 @@
 </div>
 
 {#if showNewNote}
-  <NewNoteDialog {onCreate} onClose={() => (showNewNote = false)} />
+  <NewNoteDialog
+    {onCreate}
+    onClose={() => (showNewNote = false)}
+    targetFolder={activeFolder}
+    targetDisplay={notezRootDisplay}
+  />
 {/if}
 {#if showLog}
   <LogPanel {onLog} onClose={() => (showLog = false)} />

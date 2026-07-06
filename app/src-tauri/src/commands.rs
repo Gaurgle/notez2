@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use notez_core::config::{paths, Config, NotezMetadata, ProjectRegistry};
-use notez_core::core::{aggregate, note, resolve, Note, Project, Scope};
+use notez_core::core::{aggregate, note, project, resolve, Note, Project, Scope};
 use notez_core::todo::{self, Task};
 
 use crate::dto::{NoteListItem, ProjectInfo, SearchHitDto, TodoBoard};
@@ -106,18 +106,56 @@ pub fn read_note(path: String) -> Result<String, String> {
 
 /// Create a new note in the given scope. Mirrors `notez add`: empty titles
 /// become "untitled", the body is optional. Returns the new file's path.
+/// `dir` targets a folder under the notez root (sidebar tree selection);
+/// without it the note lands in the scope's quick-notes dir as before.
 #[tauri::command]
-pub fn create_note(scope: Scope, title: String, body: Option<String>) -> Result<String, String> {
+pub fn create_note(
+    scope: Scope,
+    title: String,
+    body: Option<String>,
+    dir: Option<String>,
+) -> Result<String, String> {
     let config = Config::load().map_err(err)?;
     let body = body.filter(|b| !b.trim().is_empty());
     let note = Note::new(title, body);
 
-    let dir = resolve::quick_notes(scope, &config).map_err(err)?;
-    std::fs::create_dir_all(&dir).map_err(err)?;
+    let target = match dir.filter(|d| !d.trim().is_empty()) {
+        // A folder picked in the sidebar tree. Global scope only, and jailed
+        // to the notez root: the folder must already exist (it came from the
+        // tree) and canonicalize inside the root, so a crafted relative path
+        // cannot escape it.
+        Some(rel) => {
+            if scope != Scope::Global {
+                return Err("folder target is only valid for global notes".into());
+            }
+            let root = config.notez_root_path().canonicalize().map_err(err)?;
+            let joined = root.join(&rel).canonicalize().map_err(err)?;
+            if !joined.starts_with(&root) {
+                return Err("folder is outside the notez root".into());
+            }
+            joined
+        }
+        None => {
+            let d = resolve::quick_notes(scope, &config).map_err(err)?;
+            std::fs::create_dir_all(&d).map_err(err)?;
+            if scope == Scope::Local {
+                project::ensure_scratch_gitignored(&d);
+            }
+            d
+        }
+    };
 
-    let path = dir.join(note.filename());
+    let path = target.join(note.filename());
     std::fs::write(&path, note.rendered()).map_err(err)?;
     Ok(path.to_string_lossy().into_owned())
+}
+
+/// Absolute path of the global notez root, so the frontend can relativize
+/// global note paths into the sidebar folder tree.
+#[tauri::command]
+pub async fn notez_root() -> Result<String, String> {
+    let config = Config::load().map_err(err)?;
+    Ok(config.notez_root_path().to_string_lossy().into_owned())
 }
 
 /// Overwrite a note's contents. Refuses non-`.md` paths; deeper path-jailing
@@ -143,6 +181,9 @@ pub fn append_log(scope: Scope, message: String) -> Result<String, String> {
 
     let dir = resolve::daily_logs(scope, &config).map_err(err)?;
     std::fs::create_dir_all(&dir).map_err(err)?;
+    if scope == Scope::Local {
+        project::ensure_scratch_gitignored(&dir);
+    }
 
     let path = dir.join(note::todays_log_filename());
     let existing = std::fs::read_to_string(&path).unwrap_or_default();
@@ -178,6 +219,9 @@ pub fn attach_project(name: String, path: String) -> Result<ProjectInfo, String>
     let mut reg = ProjectRegistry::load().map_err(err)?;
     reg.attach(&name, &abs);
     reg.save_to(&paths::registry_file()).map_err(err)?;
+    // Scaffold the public store so the project can host public notes right
+    // away; failure must not undo the registration.
+    let _ = notez_core::core::project::ensure_public_store(&abs);
     Ok(ProjectInfo {
         name,
         local_path: notez_core::util::tilde::contract(&abs),

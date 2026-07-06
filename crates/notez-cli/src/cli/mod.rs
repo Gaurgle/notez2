@@ -18,15 +18,15 @@ pub struct Cli {
     #[arg(short = 'h', long = "help", global = true)]
     pub help: bool,
 
-    /// Use global `~/notez/`
+    /// personal+global: `~/notez/` (your notez repo, notes bound to no project)
     #[arg(short = 'g', long = "global", global = true)]
     pub global: bool,
 
-    /// Use public `./notez/` (committed with the project)
+    /// public+project: `./notez/` (committed with the repo, shared with collaborators)
     #[arg(short = 'p', long = "public", global = true)]
     pub public: bool,
 
-    /// Use local `./.notez/` (gitignored, this machine only)
+    /// scratch: `./.notez/` (gitignored, this machine only, never syncs)
     #[arg(short = 'l', long = "local", global = true)]
     pub local: bool,
 
@@ -44,11 +44,11 @@ pub enum Commands {
     Add {
         /// Note title (defaults to "untitled")
         title: Vec<String>,
-        /// Target directory (fzf picker if flag given without value).
-        /// Defaults to global `~/notez/` root.
+        /// Target subdirectory (bare --in opens an fzf picker).
+        /// Resolves under the global `~/notez/` root by default.
         #[arg(long, num_args = 0..=1, default_missing_value = "")]
         r#in: Option<String>,
-        /// With `--in`: pick from / resolve under the local notez instead of global.
+        /// With `--in`: resolve under the current scope's root instead of global.
         #[arg(long = "in-local")]
         in_local: bool,
     },
@@ -144,10 +144,10 @@ pub enum Commands {
     Znote {
         /// Note title (defaults to "untitled")
         title: Vec<String>,
-        /// Target directory (fzf picker if flag given without value).
+        /// Target subdirectory (bare --in opens an fzf picker).
         #[arg(long, num_args = 0..=1, default_missing_value = "")]
         r#in: Option<String>,
-        /// With `--in`: pick from / resolve under the local notez instead of global.
+        /// With `--in`: resolve under the current scope's root instead of global.
         #[arg(long = "in-local")]
         in_local: bool,
     },

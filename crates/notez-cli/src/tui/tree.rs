@@ -713,9 +713,12 @@ fn event_loop(
                 } else if real_idx < nodes.len() {
                     match std::fs::read_dir(&nodes[real_idx].path) {
                         Ok(entries) => {
+                            // Match the tree rows: infrastructure dotfiles
+                            // (.git, .tags, .notez-config.toml) are not notes.
                             let mut names: Vec<String> = entries
                                 .flatten()
                                 .map(|e| e.file_name().to_string_lossy().to_string())
+                                .filter(|n| !n.starts_with('.'))
                                 .collect();
                             names.sort();
                             names

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { TAG_DEFS } from "$lib/types";
+  import { SCOPE_META, TAG_DEFS } from "$lib/types";
+  import type { Scope } from "$lib/types";
   import Avatar from "$lib/components/Avatar.svelte";
 
   let {
@@ -34,8 +35,15 @@
     <div class="empty">Hover or select an item to inspect it.</div>
   {:else}
     <div class="title">{title}</div>
-    {#if scope}
-      <span class="badge {scope}">{scope}</span>
+    {#if scope === "global"}
+      <!-- Global notes are personal by construction (the notez repo is
+           private): show both axes so the model reads correctly. -->
+      <span class="badge personal" title={SCOPE_META.personal.hint}>personal</span>
+      <span class="badge global" title={SCOPE_META.global.hint}>notez</span>
+    {:else if scope}
+      <span class="badge {scope}" title={SCOPE_META[scope as Scope].hint}>
+        {SCOPE_META[scope as Scope].pill}
+      </span>
     {/if}
     {#if kind === "doc"}
       <span class="badge docs">docs</span>

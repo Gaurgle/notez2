@@ -43,6 +43,7 @@ pub fn run() {
             commands::migrate_preview,
             commands::migrate_apply,
             commands::create_note,
+            commands::notez_root,
             commands::save_note,
             commands::append_log,
             commands::load_todo_board,

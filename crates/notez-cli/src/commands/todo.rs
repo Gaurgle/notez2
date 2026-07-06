@@ -30,6 +30,9 @@ fn quick_add(text: String, scope: Scope, config: &Config) -> Result<()> {
     let dir = resolve::root(scope, config)?;
     std::fs::create_dir_all(&dir)
         .with_context(|| format!("failed to create {}", dir.display()))?;
+    if scope == Scope::Local {
+        notez_core::core::project::ensure_scratch_gitignored(&dir);
+    }
 
     let path = dir.join("TODO.md");
     let mut content =
@@ -76,10 +79,10 @@ fn build_board(scope: Scope, config: &Config) -> Result<(Vec<Task>, BoardContext
     let path = root.join("TODO.md");
     let (name, label) = match Project::try_detect() {
         Some(p) => {
-            let label = format!("{} ({})", p.name, scope);
+            let label = format!("{} ({})", p.name, scope.label());
             (p.name, label)
         }
-        None => (scope.to_string(), scope.to_string()),
+        None => (scope.to_string(), scope.label().to_string()),
     };
 
     let mut items = vec![Task {
@@ -279,7 +282,7 @@ mod tests {
 
         let (items, ctx) = build_board(Scope::Global, &config).unwrap();
         assert!(ctx.global);
-        assert!(items.iter().any(|t| t.is_header && t.text == "GLOBAL"));
+        assert!(items.iter().any(|t| t.is_header && t.text == "NOTEZ"));
         assert!(items.iter().any(|t| !t.is_header && t.text == "a"));
     }
 }

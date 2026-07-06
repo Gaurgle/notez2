@@ -75,19 +75,19 @@ fn section_meta(
         (Scope::Local, _) => (
             repo.join(".notez"),
             repo.join(".notez"),
-            format!("{project} (local)"),
+            format!("{project} (scratch)"),
             Scope::Local.icon(),
         ),
         (Scope::Global, _) => (
             notez_root.clone(),
             notez_root.clone(),
-            "GLOBAL".to_string(),
+            "NOTEZ".to_string(),
             Scope::Global.icon(),
         ),
     }
 }
 
-/// Group aggregator entries into ordered sections: GLOBAL first, then each
+/// Group aggregator entries into ordered sections: NOTEZ (global) first, then each
 /// project alphabetically with personal / public / docs / local sections.
 fn sections_from_entries(
     entries: Vec<NoteEntry>,
@@ -100,7 +100,7 @@ fn sections_from_entries(
         .map(|(n, p)| (n.to_string(), p))
         .collect();
 
-    // Grouping key sorts GLOBAL (bucket 0) ahead of the projects (bucket 1).
+    // Grouping key sorts NOTEZ (bucket 0) ahead of the projects (bucket 1).
     let mut grouped: std::collections::BTreeMap<(u8, String, u8), Vec<PathBuf>> =
         std::collections::BTreeMap::new();
     for entry in entries {
@@ -260,7 +260,7 @@ mod tests {
         ];
         let sections = sections_from_entries(entries, &config, &registry);
         let labels: Vec<&str> = sections.iter().map(|s| s.label.as_str()).collect();
-        assert_eq!(labels, vec!["GLOBAL", "proj (personal)", "proj (docs)"]);
+        assert_eq!(labels, vec!["NOTEZ", "proj (personal)", "proj (docs)"]);
         assert!(sections[2].is_doc);
     }
 

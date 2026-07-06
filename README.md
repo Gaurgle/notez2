@@ -6,8 +6,7 @@ A local-first note-taking tool with a CLI/TUI **and** a native desktop app. Cros
 
 ## What it is
 
-- Take notes that travel with your projects via the project's own git remote (`-p` public scope) or stay only on your machines (`-l` local scope).
-- Default scope (`personal`) puts notes in your own private notez repo, syncing across your machines without ever touching the project repo. Teammates never see them.
+- Two axes, not four silos: **accessibility** (personal vs public) x **binding** (project vs global). Default = personal+project: notes in your own private notez repo, synced across your machines, never touching the project repo. `-p` = public+project: committed with the repo, shared with collaborators. `-g` = personal+global: the `~/notez` repo itself, for notes bound to no project. `-l` = scratch: gitignored, this machine only.
 - One model that surfaces everything from the CLI or the desktop app: local scratch, personal-per-project, public-with-team, and global cross-project notes.
 - A full todoz todo manager: tags, subtasks, drag-to-reorder.
 - Cross-machine portable. No OS symlinks. No absolute paths persisted. Per-machine project registry; private notes stay private by living in your own repo.
@@ -27,7 +26,7 @@ app/                 # epoz, the desktop app: Tauri (Rust) + SvelteKit frontend
 A native desktop app (Tauri + SvelteKit + TypeScript, CodeMirror 6 editor) that reads and writes the same files as the CLI, byte-for-byte, so notes round-trip through `notez`, `nvim`, and the GUI without spurious diffs.
 
 **Notes**
-- Sidebar of scopes (Personal / Public / Local / Global) and registered projects; filter by one scope **or** one project, or view everything.
+- Sidebar of scopes (Personal / Public / notez (global) / Scratch / Docs), the global notez folder tree, and registered projects; filter by one scope, folder, **or** project, or view everything.
 - Note list with importance-tag dots and a scope/project pill.
 - Markdown editor with optional **vim mode** (toggle with the footer pill or `Ctrl+;`, with a NORMAL/INSERT/VISUAL badge) and a separate, resizable, togglable **live preview** pane.
 - Right-side inspector (scope, project, path, tags) and a status-bar footer.
@@ -76,7 +75,12 @@ under `[paths]` in config.toml).
 project including `docs`, tag strip + `#tag` filtering, preview pane,
 open-in-editor). Tag changes write only `.tags` roots that actually changed.
 
-Still stubbed: `edit`, `nav`.
+`notez add --in <dir>` targets a subdirectory (global root by default,
+the current scope's root with `--in-local`); bare `--in` opens an fzf
+picker. Scratch writes (`-l`) auto-gitignore `.notez/` in the repo.
+
+Still stubbed (all exit 1 with a clear message): `edit`, `nav`,
+`logz`/`logs` (browse daily logs), `demo`.
 
 `notez migrate-from-legacy` (with `--dry-run`) is the one-time port of a
 notez-cli layout: numbered `NN_project` mirror dirs move to `personal/<project>/`,

@@ -1,15 +1,20 @@
 <script lang="ts">
   import MachineAvatar from "$lib/components/MachineAvatar.svelte";
-  import type { NoteListItem, ProjectInfo, Scope } from "$lib/types";
+  import type { FolderNode, NoteListItem, ProjectInfo, Scope } from "$lib/types";
   import { SCOPE_META } from "$lib/types";
+  import { SvelteSet } from "svelte/reactivity";
 
   let {
     notes,
     activeScope,
     activeProject,
+    activeFolder = null,
+    folders = [],
+    notezRootDisplay = "~/notez",
     registeredProjects,
     onScope,
     onProject,
+    onFolder = () => {},
     onAttach,
     onDetach,
     onMigrate,
@@ -19,15 +24,27 @@
     notes: NoteListItem[];
     activeScope: Scope | "all" | "docs";
     activeProject: string | null;
+    activeFolder?: string | null;
+    folders?: FolderNode[];
+    notezRootDisplay?: string;
     registeredProjects: ProjectInfo[];
     onScope: (s: Scope | "all" | "docs") => void;
     onProject: (p: string | null) => void;
+    onFolder?: (rel: string | null) => void;
     onAttach: () => void;
     onDetach: (name: string) => void;
     onMigrate: () => void;
-    onHover?: (item: { kind: "scope" | "project"; name: string } | null) => void;
+    onHover?: (item: { kind: "scope" | "project" | "folder"; name: string } | null) => void;
     width?: number;
   } = $props();
+
+  // Expanded folders in the notez tree (collapsed by default at every level).
+  const expanded = new SvelteSet<string>();
+  function toggleExpand(rel: string) {
+    if (expanded.has(rel)) expanded.delete(rel);
+    else expanded.add(rel);
+  }
+  let globalCount = $derived(notes.filter((n) => n.scope === "global").length);
 
   function countFor(scope: Scope | "all" | "docs"): number {
     return scope === "all"
@@ -37,12 +54,40 @@
         : notes.filter((n) => n.scope === scope).length;
   }
 
-  // Hover handlers (spreadable) so hovering a scope/project drives the inspector.
-  const navHov = (kind: "scope" | "project", name: string) => ({
+  // Hover handlers (spreadable) so hovering a scope/project/folder drives
+  // the inspector.
+  const navHov = (kind: "scope" | "project" | "folder", name: string) => ({
     onmouseenter: () => onHover({ kind, name }),
     onmouseleave: () => onHover(null),
   });
 </script>
+
+{#snippet folderRows(nodes: FolderNode[], depth: number)}
+  {#each nodes as f (f.rel)}
+    <div class="folder-row" style="padding-left: {depth * 0.7}rem">
+      <button
+        class="caret"
+        class:open={expanded.has(f.rel)}
+        class:leaf={f.children.length === 0}
+        aria-label="toggle folder"
+        onclick={() => toggleExpand(f.rel)}>{"\u25B8"}</button
+      >
+      <button
+        class="item folder"
+        class:active={activeFolder === f.rel}
+        onclick={() => onFolder(f.rel)}
+        {...navHov("folder", f.rel)}
+        title={f.rel}
+      >
+        <span class="item-label">{f.name}</span>
+        <span class="count">{f.count}</span>
+      </button>
+    </div>
+    {#if expanded.has(f.rel) && f.children.length}
+      {@render folderRows(f.children, depth + 1)}
+    {/if}
+  {/each}
+{/snippet}
 
 <aside class="sidebar" style="width:{width}px">
   <div class="brand">
@@ -65,6 +110,7 @@
       class="item"
       class:active={activeProject === null && activeScope === "personal"}
       onclick={() => onScope("personal")}
+      title={SCOPE_META.personal.hint}
       {...navHov("scope", "personal")}
     >
       <span class="dot personal"></span>
@@ -75,6 +121,7 @@
       class="item"
       class:active={activeProject === null && activeScope === "public"}
       onclick={() => onScope("public")}
+      title={SCOPE_META.public.hint}
       {...navHov("scope", "public")}
     >
       <span class="dot public"></span>
@@ -83,18 +130,9 @@
     </button>
     <button
       class="item"
-      class:active={activeProject === null && activeScope === "local"}
-      onclick={() => onScope("local")}
-      {...navHov("scope", "local")}
-    >
-      <span class="dot local"></span>
-      <span class="item-label">{SCOPE_META.local.label}</span>
-      <span class="count">{countFor("local")}</span>
-    </button>
-    <button
-      class="item"
       class:active={activeProject === null && activeScope === "global"}
       onclick={() => onScope("global")}
+      title={SCOPE_META.global.hint}
       {...navHov("scope", "global")}
     >
       <span class="dot global"></span>
@@ -103,14 +141,44 @@
     </button>
     <button
       class="item"
+      class:active={activeProject === null && activeScope === "local"}
+      onclick={() => onScope("local")}
+      title={SCOPE_META.local.hint}
+      {...navHov("scope", "local")}
+    >
+      <span class="dot local"></span>
+      <span class="item-label">{SCOPE_META.local.label}</span>
+      <span class="count">{countFor("local")}</span>
+    </button>
+    <button
+      class="item"
       class:active={activeProject === null && activeScope === "docs"}
       onclick={() => onScope("docs")}
+      title="Markdown docs from each project's docs/ directory"
       {...navHov("scope", "docs")}
     >
       <span class="dot docs"></span>
       <span class="item-label">Docs</span>
       <span class="count">{countFor("docs")}</span>
     </button>
+  </nav>
+
+  <nav class="group">
+    <div class="group-head">
+      <span class="group-label">Notez</span>
+      <span class="root-path" title={notezRootDisplay}>{notezRootDisplay}</span>
+    </div>
+    <button
+      class="item"
+      class:active={activeFolder === null && activeProject === null && activeScope === "global"}
+      onclick={() => onFolder(null)}
+      {...navHov("scope", "global")}
+    >
+      <span class="dot global"></span>
+      <span class="item-label">notez</span>
+      <span class="count">{globalCount}</span>
+    </button>
+    {@render folderRows(folders, 1)}
   </nav>
 
   <nav class="group">
@@ -256,6 +324,40 @@
   .x:hover {
     opacity: 1;
     color: var(--danger);
+  }
+  .root-path {
+    font-size: 0.62rem;
+    color: var(--faint);
+    padding-right: 0.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 60%;
+  }
+  .folder-row {
+    display: flex;
+    align-items: center;
+  }
+  .folder-row .item {
+    flex: 1;
+    padding-left: 0.15rem;
+  }
+  .caret {
+    background: none;
+    border: none;
+    color: var(--subtext);
+    cursor: pointer;
+    font-size: 0.6rem;
+    width: 14px;
+    flex-shrink: 0;
+    padding: 0;
+    transition: transform 0.12s;
+  }
+  .caret.open {
+    transform: rotate(90deg);
+  }
+  .caret.leaf {
+    visibility: hidden;
   }
   .migrate-link {
     margin-top: 0.4rem;

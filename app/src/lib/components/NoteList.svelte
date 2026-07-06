@@ -59,7 +59,7 @@
                 <span class="pill docs">docs</span>
               {/if}
               {#if inProjectMode}
-                <span class="pill {note.scope}">{SCOPE_META[note.scope].label}</span>
+                <span class="pill {note.scope}">{SCOPE_META[note.scope].pill}</span>
               {:else if note.project}
                 <span class="project">{note.project}</span>
               {/if}
@@ -83,7 +83,7 @@
               <span class="pill docs">docs</span>
             {/if}
             {#if inProjectMode}
-              <span class="pill {note.scope}">{SCOPE_META[note.scope].label}</span>
+              <span class="pill {note.scope}">{SCOPE_META[note.scope].pill}</span>
             {:else if note.project}
               <span class="project">{note.project}</span>
             {/if}

@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use anyhow::{Context, Result, bail};
 
 use notez_core::config::Config;
-use notez_core::core::{Scope, note, resolve};
+use notez_core::core::{Scope, note, project, resolve};
 
 /// Append a log entry. Returns the file path written to.
 pub fn run(message_words: Vec<String>, scope: Scope, config: &Config) -> Result<PathBuf> {
@@ -17,6 +17,9 @@ pub fn run(message_words: Vec<String>, scope: Scope, config: &Config) -> Result<
     let dir = resolve::daily_logs(scope, config)?;
     std::fs::create_dir_all(&dir)
         .with_context(|| format!("failed to create log dir {}", dir.display()))?;
+    if scope == Scope::Local {
+        project::ensure_scratch_gitignored(&dir);
+    }
 
     let path = dir.join(note::todays_log_filename());
     let existing = std::fs::read_to_string(&path).unwrap_or_default();

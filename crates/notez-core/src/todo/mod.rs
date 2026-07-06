@@ -299,7 +299,7 @@ pub fn load_board(config: &Config, registry: &ProjectRegistry) -> Vec<Task> {
         &mut seen,
         &notez_root.join("TODO.md"),
         "global",
-        "GLOBAL",
+        "NOTEZ",
         true,
     );
 
@@ -346,7 +346,7 @@ pub fn load_board(config: &Config, registry: &ProjectRegistry) -> Vec<Task> {
             &mut seen,
             &local_path.join(".notez").join("TODO.md"),
             name,
-            &format!("{name} (local)"),
+            &format!("{name} (scratch)"),
             false,
         );
     }

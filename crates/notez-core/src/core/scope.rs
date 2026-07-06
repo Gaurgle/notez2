@@ -1,12 +1,15 @@
-//! Note scope: local, personal, public, or global.
+//! Note scope. Two axes (decided 2026-07-06): accessibility (personal vs
+//! public) x binding (project vs global), plus a machine-only scratch tier.
 //!
-//! Every notez command resolves to a scope:
-//!
-//! - `Local`: `<cwd>/.notez/`, gitignored. Per-machine scratch, never syncs.
-//! - `Personal`: `<notez_root>/personal/<project>/`. Your notes about this
-//!   project, synced via your own notez remote, invisible to teammates.
-//! - `Public`: `<cwd>/notez/`, committed with the project. Visible to the team.
-//! - `Global`: `<notez_root>/`. Cross-project notes, synced via your own remote.
+//! - `Personal` = personal + project: `<notez_root>/personal/<project>/`,
+//!   synced via your own notez remote, invisible to teammates.
+//! - `Public` = public + project: `<cwd>/notez/`, committed with the
+//!   project, visible to collaborators.
+//! - `Global` = personal + global: `<notez_root>/`, notes bound to no
+//!   project (the notez repo itself is private).
+//! - `Local` = scratch: `<cwd>/.notez/`, gitignored, this machine only,
+//!   never syncs. Presented to users as "scratch"; the wire name stays
+//!   `local` for compatibility.
 
 use std::fmt;
 
@@ -47,14 +50,27 @@ impl Scope {
         }
     }
 
-    /// Nerdfont icon. Lock for local, user for personal, globe for public,
-    /// home for global.
+    /// Nerdfont icon. Lock for scratch, user for personal, globe for
+    /// public, home for global.
     pub fn icon(&self) -> &'static str {
         match self {
             Self::Local => "\u{f023}",    // lock
             Self::Personal => "\u{f007}", // user
             Self::Public => "\u{f0ac}",   // globe
             Self::Global => "\u{f015}",   // home
+        }
+    }
+}
+
+impl Scope {
+    /// Human-facing word for the scope (the wire form via `Display` stays
+    /// unchanged): scratch / personal / public / notez.
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Local => "scratch",
+            Self::Personal => "personal",
+            Self::Public => "public",
+            Self::Global => "notez",
         }
     }
 }
