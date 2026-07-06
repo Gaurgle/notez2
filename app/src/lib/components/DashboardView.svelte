@@ -11,6 +11,7 @@
   import { githubUser, githubContributionCalendar, listNotes, loadTodoBoard } from "$lib/ipc";
   import { repoStore } from "$lib/repos.svelte";
   import { ensureActivity, activityCache, loadingRepos } from "$lib/activity.svelte";
+  import { refreshBus } from "$lib/refresh.svelte";
   import type { GhCommit, GhContributor, GhUser, GhDay } from "$lib/types";
   import {
     CloudSun,
@@ -75,6 +76,16 @@
   let todoOpen = $state(0);
   let todoDone = $state(0);
   let calendarDays = $state<GhDay[]>([]); // repo-independent activity (green squares)
+
+  // Topbar refresh: bypass the disk cache for everything this view shows
+  // (selected repos only, still through the gh gate).
+  refreshBus.register("home", async () => {
+    const [days] = await Promise.all([
+      githubContributionCalendar(true).catch(() => calendarDays),
+      ensureActivity(repoStore.activeNames, true),
+    ]);
+    calendarDays = days;
+  });
 
   onMount(async () => {
     try {

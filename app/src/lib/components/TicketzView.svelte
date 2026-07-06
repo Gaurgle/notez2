@@ -13,6 +13,7 @@
   import { githubUser, githubCreateIssue } from "$lib/ipc";
   import { repoStore } from "$lib/repos.svelte";
   import { ensureActivity, activityCache, invalidate, loadingRepos } from "$lib/activity.svelte";
+  import { refreshBus } from "$lib/refresh.svelte";
   import { SvelteSet } from "svelte/reactivity";
   import type { GhIssue } from "$lib/types";
   import { Plus, Eye, Pencil, PanelRight, CalendarDays, ChevronDown, ChevronRight } from "lucide-svelte";
@@ -112,6 +113,13 @@
       /* offline */
     }
     await repoStore.ensure(me);
+  });
+
+  // Topbar refresh: force-refetch the selected repos' issues, then rebuild.
+  refreshBus.register("ticketz", async () => {
+    const names = repoStore.activeNames;
+    await ensureActivity(names, true);
+    rebuildTickets(names);
   });
 
   // Build the board from the shared activity cache — but only while ticketz is

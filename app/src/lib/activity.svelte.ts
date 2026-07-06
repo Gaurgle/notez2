@@ -3,10 +3,14 @@
 // All views stay mounted, so without this each one would independently spawn a
 // `gh` storm on every repo toggle and peg the CPU. Instead every view reads the
 // same reactive cache and calls ensureActivity(); fetches run through a small
-// pool (POOL at a time) on Tauri background threads and stream into the cache,
-// so the UI stays responsive and shows per-repo progress.
+// pool (POOL at a time), the backend commands are async (never on the main
+// thread) and gate/cache the actual `gh` processes, so the UI stays responsive
+// and shows per-repo progress. When the backend refreshes a stale disk-cache
+// entry in the background it emits `github:refreshed`; the listener below
+// re-pulls just that repo so views update live.
 
 import { SvelteMap, SvelteSet } from "svelte/reactivity";
+import { listen } from "@tauri-apps/api/event";
 import { githubRepoActivity } from "./ipc";
 import type { GhCommit, GhIssue } from "./types";
 
@@ -38,14 +42,18 @@ async function pool<T>(items: T[], size: number, fn: (it: T) => Promise<void>) {
 }
 
 /** Ensure each repo has fresh activity cached. Cheap (no-op) when everything is
- *  already fresh; otherwise fetches the missing ones POOL at a time. */
-export async function ensureActivity(names: string[]) {
-  const missing = names.filter((n) => !fresh(activityCache.get(n)) && !loadingRepos.has(n));
+ *  already fresh; otherwise fetches the missing ones POOL at a time. `force`
+ *  refetches everything, bypassing both this cache and the backend disk cache
+ *  (still through the gh gate). */
+export async function ensureActivity(names: string[], force = false) {
+  const missing = names.filter(
+    (n) => (force || !fresh(activityCache.get(n))) && !loadingRepos.has(n)
+  );
   if (missing.length === 0) return;
   await pool(missing, POOL, async (n) => {
     loadingRepos.add(n);
     try {
-      const act = await githubRepoActivity(n, COMMIT_LIMIT);
+      const act = await githubRepoActivity(n, COMMIT_LIMIT, force);
       activityCache.set(n, { commits: act.commits, issues: act.issues, ts: Date.now() });
     } catch {
       /* leave uncached; retried on the next pass */
@@ -62,3 +70,16 @@ export function invalidate(full: string) {
 
 export const commitsFor = (full: string): GhCommit[] => activityCache.get(full)?.commits ?? [];
 export const issuesFor = (full: string): GhIssue[] => activityCache.get(full)?.issues ?? [];
+
+// Background disk-cache refreshes: re-pull the affected repo (served straight
+// from the now-fresh cache, so this is one cheap IPC call, no gh spawn).
+void listen<string>("github:refreshed", ({ payload }) => {
+  const prefix = "repo_activity:";
+  if (!payload.startsWith(prefix)) return;
+  const repo = payload.slice(prefix.length);
+  if (!activityCache.has(repo)) return; // nobody is showing it
+  activityCache.delete(repo);
+  void ensureActivity([repo]);
+}).catch(() => {
+  /* not running under Tauri (e.g. plain vite) */
+});

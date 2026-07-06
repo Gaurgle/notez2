@@ -2395,12 +2395,15 @@ name = "notez-app"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "dirs",
  "notez-core",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-opener",
+ "tempfile",
+ "tokio",
  "window-vibrancy",
 ]
 
@@ -4245,6 +4248,7 @@ dependencies = [
  "libc",
  "mio",
  "pin-project-lite",
+ "signal-hook-registry",
  "socket2",
  "windows-sys 0.61.2",
 ]

@@ -10,6 +10,7 @@
   import AttachProjectDialog from "$lib/components/AttachProjectDialog.svelte";
   import MigrationDialog from "$lib/components/MigrationDialog.svelte";
   import Inspector from "$lib/components/Inspector.svelte";
+  import { refreshBus } from "$lib/refresh.svelte";
   import MarkdownPreview from "$lib/components/MarkdownPreview.svelte";
   import Calendar from "$lib/components/Calendar.svelte";
   import Resizer from "$lib/components/Resizer.svelte";
@@ -284,6 +285,9 @@
   let filtered = $derived(
     searchText.trim() === "" ? titleMatched : [...titleMatched, ...contentOnly]
   );
+
+  // Topbar refresh: reload the note list from disk, keeping the selection.
+  refreshBus.register("notes", () => refresh(selectedPath ?? undefined));
 
   async function refresh(selectPath?: string) {
     try {

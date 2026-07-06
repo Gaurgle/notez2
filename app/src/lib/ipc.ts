@@ -90,7 +90,8 @@ export const migrateApply = () => invoke<string[]>("migrate_apply");
 export const githubUser = () => invoke<GhUser>("github_user");
 
 /** Every repo the user can reach (owned / collaborator / org member). */
-export const githubAllRepos = () => invoke<GhRepo[]>("github_all_repos");
+export const githubAllRepos = (force = false) =>
+  invoke<GhRepo[]>("github_all_repos", { force });
 
 /** Recent commits across `owner/repo` names, merged newest first. */
 export const githubCommits = (repos: string[], limit = 10) =>
@@ -109,12 +110,13 @@ export const githubContributors = (repo: string) =>
   invoke<GhContributor[]>("github_contributors", { repo });
 
 /** The signed-in user's contribution calendar (green squares), repo-independent. */
-export const githubContributionCalendar = () =>
-  invoke<GhDay[]>("github_contribution_calendar");
+export const githubContributionCalendar = (force = false) =>
+  invoke<GhDay[]>("github_contribution_calendar", { force });
 
 /** Commits + issues for one repo, in a single IPC round-trip. */
-export const githubRepoActivity = (repo: string, commitLimit = 15) =>
+export const githubRepoActivity = (repo: string, commitLimit = 15, force = false) =>
   invoke<{ repo: string; commits: GhCommit[]; issues: GhIssue[] }>("github_repo_activity", {
     repo,
     commitLimit,
+    force,
   });

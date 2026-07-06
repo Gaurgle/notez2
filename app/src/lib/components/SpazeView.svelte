@@ -9,6 +9,10 @@
   import { githubUser } from "$lib/ipc";
   import { repoStore } from "$lib/repos.svelte";
   import { ensureActivity, activityCache } from "$lib/activity.svelte";
+  import { refreshBus } from "$lib/refresh.svelte";
+
+  // Topbar refresh: force-refetch activity for the selected repos.
+  refreshBus.register("spaze", () => ensureActivity(repoStore.activeNames, true));
   import type { GhRepo } from "$lib/types";
   import { Hash, Send, Users } from "lucide-svelte";
 

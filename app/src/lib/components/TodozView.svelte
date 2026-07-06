@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { refreshBus } from "$lib/refresh.svelte";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { Toggle } from "melt/builders";
   import TodoItem from "$lib/components/todo/TodoItem.svelte";
@@ -149,6 +150,9 @@
     await reload();
     syncing = false;
   }
+
+  // Topbar refresh: re-read the board from disk.
+  refreshBus.register("todoz", reload);
 
   async function reload() {
     try {

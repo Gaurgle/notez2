@@ -10,7 +10,9 @@
     ListChecks,
     KanbanSquare,
     MessagesSquare,
+    RefreshCw,
   } from "lucide-svelte";
+  import { refreshBus } from "$lib/refresh.svelte";
 
   type Mode = "home" | "notes" | "todoz" | "ticketz" | "spaze";
   const MODES: Mode[] = ["home", "notes", "todoz", "ticketz", "spaze"];
@@ -67,6 +69,14 @@
         <MessagesSquare size={15} /><span class="label">Spaze</span>
       </button>
     </div>
+    <button
+      class="tab refresh"
+      title="Refresh (current view)"
+      disabled={refreshBus.busy}
+      onclick={() => refreshBus.run(mode)}
+    >
+      <span class="refresh-ico" class:spin={refreshBus.busy}><RefreshCw size={15} /></span>
+    </button>
   </div>
 
   <main class="content">
@@ -134,6 +144,26 @@
     background: var(--glass-active);
     color: var(--accent);
     box-shadow: inset 0 1px 0 var(--highlight), 0 0 14px rgba(203, 166, 247, 0.18);
+  }
+  .tab.refresh {
+    margin-left: auto;
+    padding: 0.28rem 0.5rem;
+  }
+  .tab.refresh:disabled {
+    cursor: default;
+    color: var(--subtext);
+    background: none;
+  }
+  .refresh-ico {
+    display: inline-flex;
+  }
+  .refresh-ico.spin {
+    animation: refresh-spin 0.9s linear infinite;
+  }
+  @keyframes refresh-spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
   .content {
     flex: 1;

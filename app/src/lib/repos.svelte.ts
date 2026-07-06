@@ -7,6 +7,7 @@
 // default (the user has ~90 repos; most are dormant). A toggle reveals them.
 
 import { SvelteSet } from "svelte/reactivity";
+import { listen } from "@tauri-apps/api/event";
 import { githubAllRepos } from "./ipc";
 import type { GhRepo } from "./types";
 
@@ -52,6 +53,17 @@ class RepoStore {
       this.error = String(e);
     } finally {
       this.loading = false;
+    }
+  }
+
+  /** Re-pull the repo list without a loading flip (used when the backend
+   *  refreshes its disk cache in the background). */
+  async reloadSilently() {
+    if (!this.#loaded) return;
+    try {
+      this.all = await githubAllRepos();
+    } catch {
+      /* keep the current list */
     }
   }
 
@@ -142,3 +154,11 @@ class RepoStore {
 }
 
 export const repoStore = new RepoStore();
+
+// The backend refreshed its cached repo list in the background: pick it up
+// quietly (one cheap IPC call served from the fresh cache).
+void listen<string>("github:refreshed", ({ payload }) => {
+  if (payload === "repos") void repoStore.reloadSilently();
+}).catch(() => {
+  /* not running under Tauri (e.g. plain vite) */
+});

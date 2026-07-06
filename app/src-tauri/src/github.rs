@@ -6,16 +6,34 @@
 //! repos and several orgs coexist without collisions. Everything here is
 //! best-effort: a missing `gh`, an unreachable repo, or an empty repo all
 //! degrade to an empty list rather than an error the UI has to special-case.
+//!
+//! Responsiveness rules (the UI froze without them):
+//! - Every command is `async`. In Tauri v2 a synchronous command runs on the
+//!   MAIN thread, so a sync `gh` call blocks the whole window for its full
+//!   network round-trip.
+//! - At most [`MAX_CONCURRENT_GH`] `gh` processes run at once, app-wide.
+//!   Each `gh` is a full Go binary doing network I/O and JSON; an unbounded
+//!   fan-out lags the entire machine, not just the app.
+//! - Read endpoints go through a stale-while-revalidate disk cache: a fresh
+//!   entry answers instantly with no process spawn, a stale entry answers
+//!   instantly AND refreshes in the background (a `github:refreshed` event
+//!   tells the frontend when the new data landed), and only a cold miss
+//!   actually waits on the network.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::process::Command;
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use tauri::{AppHandle, Emitter};
+use tokio::sync::Semaphore;
 
 /// One repository the signed-in user can reach.
 #[derive(Serialize)]
 pub struct GhRepo {
     pub name: String,
-    pub full_name: String, // owner/repo — the stable key used everywhere
+    pub full_name: String, // owner/repo: the stable key used everywhere
     pub owner: String,
     pub owner_type: String, // "User" | "Organization"
     pub description: String,
@@ -80,15 +98,39 @@ pub struct GhDay {
     pub count: u32,
 }
 
+// --- gh process gate -------------------------------------------------------
+
+/// App-wide cap on concurrent `gh` processes.
+const MAX_CONCURRENT_GH: usize = 3;
+static GH_GATE: Semaphore = Semaphore::const_new(MAX_CONCURRENT_GH);
+
+/// Cache keys with a background refresh already in flight, so several views
+/// hitting the same stale entry spawn one refresh, not one each.
+static REFRESHING: Mutex<Option<HashSet<String>>> = Mutex::new(None);
+
+fn refresh_begin(key: &str) -> bool {
+    let mut guard = REFRESHING.lock().unwrap();
+    guard.get_or_insert_with(HashSet::new).insert(key.to_string())
+}
+
+fn refresh_end(key: &str) {
+    if let Some(set) = REFRESHING.lock().unwrap().as_mut() {
+        set.remove(key);
+    }
+}
+
 /// Run `gh` with the given args, returning stdout on success. Falls back to the
 /// Homebrew path when `gh` is not on the app's `PATH` (the case when the app is
-/// launched from Finder rather than a terminal).
-fn run_gh(args: &[&str]) -> Result<String, String> {
-    let attempt = |bin: &str| Command::new(bin).args(args).output();
+/// launched from Finder rather than a terminal). Waits for a gate permit first.
+async fn run_gh(args: &[String]) -> Result<String, String> {
+    let _permit = GH_GATE.acquire().await.map_err(|e| e.to_string())?;
 
-    let output = match attempt("gh") {
+    let attempt = |bin: &str| tokio::process::Command::new(bin).args(args).output();
+    let output = match attempt("gh").await {
         Ok(o) => o,
-        Err(_) => attempt("/opt/homebrew/bin/gh").map_err(|e| format!("could not run gh: {e}"))?,
+        Err(_) => attempt("/opt/homebrew/bin/gh")
+            .await
+            .map_err(|e| format!("could not run gh: {e}"))?,
     };
 
     if output.status.success() {
@@ -97,6 +139,136 @@ fn run_gh(args: &[&str]) -> Result<String, String> {
         Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
     }
 }
+
+// --- stale-while-revalidate disk cache -------------------------------------
+
+/// One cached gh response. `args` is stored so mutations can invalidate every
+/// entry mentioning a repo without knowing the exact keys.
+#[derive(Serialize, Deserialize)]
+struct CacheEntry {
+    ts: u64,
+    args: Vec<String>,
+    body: String,
+}
+
+fn cache_dir() -> PathBuf {
+    dirs::cache_dir()
+        .unwrap_or_else(std::env::temp_dir)
+        .join("epoz")
+        .join("gh")
+}
+
+/// Deterministic key for an args vector. `DefaultHasher::new()` uses fixed
+/// SipHash keys, so keys are stable across app restarts of the same build;
+/// a toolchain upgrade at worst costs one cold cache.
+fn cache_key(args: &[String]) -> String {
+    use std::hash::{DefaultHasher, Hash, Hasher};
+    let mut h = DefaultHasher::new();
+    args.hash(&mut h);
+    format!("{:016x}", h.finish())
+}
+
+fn now_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+fn read_cache_from(dir: &Path, key: &str) -> Option<CacheEntry> {
+    let raw = std::fs::read_to_string(dir.join(key).with_extension("json")).ok()?;
+    serde_json::from_str(&raw).ok()
+}
+
+fn write_cache_to(dir: &Path, key: &str, args: &[String], body: &str) {
+    let entry = CacheEntry {
+        ts: now_secs(),
+        args: args.to_vec(),
+        body: body.to_string(),
+    };
+    if std::fs::create_dir_all(dir).is_ok() {
+        if let Ok(json) = serde_json::to_string(&entry) {
+            let _ = std::fs::write(dir.join(key).with_extension("json"), json);
+        }
+    }
+}
+
+/// Delete every cache entry whose args mention `needle` (an `owner/repo`).
+/// Called after mutations so the next read refetches instead of serving the
+/// pre-mutation snapshot.
+fn bust_cache_containing(needle: &str) {
+    let dir = cache_dir();
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return;
+    };
+    for e in entries.flatten() {
+        let path = e.path();
+        let Ok(raw) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        if let Ok(entry) = serde_json::from_str::<CacheEntry>(&raw) {
+            if entry.args.iter().any(|a| a.contains(needle)) {
+                let _ = std::fs::remove_file(&path);
+            }
+        }
+    }
+}
+
+fn is_fresh(entry_ts: u64, now: u64, ttl: Duration) -> bool {
+    now.saturating_sub(entry_ts) <= ttl.as_secs()
+}
+
+/// Cached `gh` call. Fresh entry: instant, no spawn. Stale entry: instant
+/// stale answer + background refresh that emits `github:refreshed` with `tag`
+/// when new data is on disk. Cold: gated fetch. `force` skips the cache read
+/// entirely (still gated, still written back) for user-initiated refreshes.
+async fn gh_cached(
+    app: &AppHandle,
+    args: Vec<String>,
+    ttl: Duration,
+    tag: String,
+    force: bool,
+) -> Result<String, String> {
+    let dir = cache_dir();
+    let key = cache_key(&args);
+
+    if let Some(entry) = read_cache_from(&dir, &key).filter(|_| !force) {
+        if is_fresh(entry.ts, now_secs(), ttl) {
+            return Ok(entry.body);
+        }
+        // Serve stale immediately; refresh behind the gate unless a refresh
+        // for this key is already running.
+        if refresh_begin(&key) {
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Ok(body) = run_gh(&args).await {
+                    write_cache_to(&cache_dir(), &cache_key(&args), &args, &body);
+                    let _ = app.emit("github:refreshed", tag);
+                }
+                refresh_end(&cache_key(&args));
+            });
+        }
+        return Ok(entry.body);
+    }
+
+    let body = run_gh(&args).await?;
+    write_cache_to(&dir, &key, &args, &body);
+    Ok(body)
+}
+
+fn args(list: &[&str]) -> Vec<String> {
+    list.iter().map(|s| s.to_string()).collect()
+}
+
+// Per-endpoint TTLs. Short enough to feel live, long enough that tab-hopping
+// and repo-toggling never re-spawn gh for data just fetched.
+const TTL_USER: Duration = Duration::from_secs(3600);
+const TTL_REPOS: Duration = Duration::from_secs(600);
+const TTL_ACTIVITY: Duration = Duration::from_secs(180);
+const TTL_CONTRIBUTORS: Duration = Duration::from_secs(600);
+const TTL_CALENDAR: Duration = Duration::from_secs(600);
+
+// --- parsing helpers --------------------------------------------------------
 
 fn parse(json: &str) -> Result<Value, String> {
     serde_json::from_str(json).map_err(|e| format!("bad gh json: {e}"))
@@ -129,10 +301,12 @@ fn points_from_label(label: &str) -> Option<u32> {
     }
 }
 
+// --- commands ---------------------------------------------------------------
+
 /// The signed-in GitHub user.
 #[tauri::command]
-pub fn github_user() -> Result<GhUser, String> {
-    let out = run_gh(&["api", "user"])?;
+pub async fn github_user(app: AppHandle) -> Result<GhUser, String> {
+    let out = gh_cached(&app, args(&["api", "user"]), TTL_USER, "user".into(), false).await?;
     let v = parse(&out)?;
     let login = str_field(&v, "login");
     Ok(GhUser {
@@ -151,13 +325,20 @@ pub fn github_user() -> Result<GhUser, String> {
 /// push first. One paginated call; the list payload already carries the open
 /// issue count and owner, so no per-repo follow-ups are needed here.
 #[tauri::command]
-pub fn github_all_repos() -> Result<Vec<GhRepo>, String> {
-    let out = run_gh(&[
-        "api",
-        "--paginate",
-        "--slurp",
-        "user/repos?affiliation=owner,collaborator,organization_member&sort=pushed&per_page=100",
-    ])?;
+pub async fn github_all_repos(app: AppHandle, force: Option<bool>) -> Result<Vec<GhRepo>, String> {
+    let out = gh_cached(
+        &app,
+        args(&[
+            "api",
+            "--paginate",
+            "--slurp",
+            "user/repos?affiliation=owner,collaborator,organization_member&sort=pushed&per_page=100",
+        ]),
+        TTL_REPOS,
+        "repos".into(),
+        force.unwrap_or(false),
+    )
+    .await?;
     // `--slurp` returns an array of *pages* (each page is itself an array of
     // repos), so flatten one level. Tolerate a flat array too, just in case.
     let v = parse(&out)?;
@@ -194,28 +375,36 @@ fn map_user_repo(v: &Value) -> GhRepo {
     }
 }
 
-/// Recent commits across the given `owner/repo` repos, merged newest first.
-/// `limit` caps commits fetched per repo before merging.
-#[tauri::command]
-pub fn github_commits(repos: Vec<String>, limit: u32) -> Result<Vec<GhCommit>, String> {
-    let per_page = limit.clamp(1, 100).to_string();
-    let mut commits: Vec<GhCommit> = Vec::new();
+/// Commits for one repo, cached per repo so each entry refreshes on its own
+/// clock and mutations can bust a single repo.
+async fn commits_for(app: &AppHandle, repo: &str, per_page: &str, force: bool) -> Vec<GhCommit> {
+    let path = format!("repos/{repo}/commits?per_page={per_page}");
+    // A brand-new/empty repo 409s here; treat any failure as "no commits".
+    let Ok(out) = gh_cached(
+        app,
+        args(&["api", &path]),
+        TTL_ACTIVITY,
+        format!("repo_activity:{repo}"),
+        force,
+    )
+    .await
+    else {
+        return Vec::new();
+    };
+    let Ok(v) = parse(&out) else {
+        return Vec::new();
+    };
+    let Some(arr) = v.as_array() else {
+        return Vec::new();
+    };
 
-    for repo in &repos {
-        let path = format!("repos/{repo}/commits?per_page={per_page}");
-        // A brand-new/empty repo 409s here; treat any failure as "no commits".
-        let Ok(out) = run_gh(&["api", &path]) else {
-            continue;
-        };
-        let Ok(v) = parse(&out) else { continue };
-        let Some(arr) = v.as_array() else { continue };
-
-        for c in arr {
+    arr.iter()
+        .map(|c| {
             let commit = c.get("commit");
             let author_obj = c.get("author");
-            commits.push(GhCommit {
+            GhCommit {
                 sha: str_field(c, "sha"),
-                repo: repo.clone(),
+                repo: repo.to_string(),
                 message: first_line(
                     commit
                         .and_then(|x| x.get("message"))
@@ -238,22 +427,34 @@ pub fn github_commits(repos: Vec<String>, limit: u32) -> Result<Vec<GhCommit>, S
                     .and_then(|x| x.get("author"))
                     .map(|a| str_field(a, "date"))
                     .unwrap_or_default(),
-            });
-        }
-    }
+            }
+        })
+        .collect()
+}
 
+/// Recent commits across the given `owner/repo` repos, merged newest first.
+/// `limit` caps commits fetched per repo before merging.
+#[tauri::command]
+pub async fn github_commits(
+    app: AppHandle,
+    repos: Vec<String>,
+    limit: u32,
+) -> Result<Vec<GhCommit>, String> {
+    let per_page = limit.clamp(1, 100).to_string();
+    let mut commits: Vec<GhCommit> = Vec::new();
+    for repo in &repos {
+        commits.extend(commits_for(&app, repo, &per_page, false).await);
+    }
     commits.sort_by(|a, b| b.date.cmp(&a.date));
     Ok(commits)
 }
 
-/// All issues (open + closed) across the given `owner/repo` repos. PRs are
-/// excluded; `gh issue list` already does this.
-#[tauri::command]
-pub fn github_issues(repos: Vec<String>) -> Result<Vec<GhIssue>, String> {
-    let mut issues: Vec<GhIssue> = Vec::new();
-
-    for repo in &repos {
-        let Ok(out) = run_gh(&[
+/// Issues for one repo (open + closed), cached per repo. PRs are excluded;
+/// `gh issue list` already does this.
+async fn issues_for(app: &AppHandle, repo: &str, force: bool) -> Vec<GhIssue> {
+    let Ok(out) = gh_cached(
+        app,
+        args(&[
             "issue",
             "list",
             "-R",
@@ -264,13 +465,24 @@ pub fn github_issues(repos: Vec<String>) -> Result<Vec<GhIssue>, String> {
             "100",
             "--json",
             "number,title,body,state,labels,assignees,author,url,createdAt,updatedAt",
-        ]) else {
-            continue;
-        };
-        let Ok(v) = parse(&out) else { continue };
-        let Some(arr) = v.as_array() else { continue };
+        ]),
+        TTL_ACTIVITY,
+        format!("repo_activity:{repo}"),
+        force,
+    )
+    .await
+    else {
+        return Vec::new();
+    };
+    let Ok(v) = parse(&out) else {
+        return Vec::new();
+    };
+    let Some(arr) = v.as_array() else {
+        return Vec::new();
+    };
 
-        for it in arr {
+    arr.iter()
+        .map(|it| {
             let labels: Vec<String> = it
                 .get("labels")
                 .and_then(Value::as_array)
@@ -283,9 +495,9 @@ pub fn github_issues(repos: Vec<String>) -> Result<Vec<GhIssue>, String> {
                 .map(|a| a.iter().map(|u| str_field(u, "login")).collect())
                 .unwrap_or_default();
 
-            issues.push(GhIssue {
+            GhIssue {
                 number: it.get("number").and_then(Value::as_u64).unwrap_or(0),
-                repo: repo.clone(),
+                repo: repo.to_string(),
                 title: str_field(it, "title"),
                 body: str_field(it, "body"),
                 state: str_field(it, "state").to_ascii_lowercase(),
@@ -300,25 +512,40 @@ pub fn github_issues(repos: Vec<String>) -> Result<Vec<GhIssue>, String> {
                 created_at: str_field(it, "createdAt"),
                 updated_at: str_field(it, "updatedAt"),
                 points,
-            });
-        }
-    }
+            }
+        })
+        .collect()
+}
 
+/// All issues (open + closed) across the given `owner/repo` repos.
+#[tauri::command]
+pub async fn github_issues(app: AppHandle, repos: Vec<String>) -> Result<Vec<GhIssue>, String> {
+    let mut issues: Vec<GhIssue> = Vec::new();
+    for repo in &repos {
+        issues.extend(issues_for(&app, repo, false).await);
+    }
     issues.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
     Ok(issues)
 }
 
 /// Create a real issue in the `owner/repo`. Returns the new issue number so the
-/// caller can refetch the board. User-initiated only (the New button).
+/// caller can refetch the board. User-initiated only (the New button). Never
+/// cached, and busts every cache entry for the repo so the refetch sees it.
 #[tauri::command]
-pub fn github_create_issue(repo: String, title: String, body: String) -> Result<u64, String> {
+pub async fn github_create_issue(
+    repo: String,
+    title: String,
+    body: String,
+) -> Result<u64, String> {
     if title.trim().is_empty() {
         return Err("issue title is empty".into());
     }
     // gh prints the new issue's URL on success; the number is its last segment.
-    let out = run_gh(&[
+    let out = run_gh(&args(&[
         "issue", "create", "-R", &repo, "--title", &title, "--body", &body,
-    ])?;
+    ]))
+    .await?;
+    bust_cache_containing(&repo);
     out.trim()
         .rsplit('/')
         .next()
@@ -327,8 +554,8 @@ pub fn github_create_issue(repo: String, title: String, body: String) -> Result<
 }
 
 /// Commits + issues for a single repo, in one IPC round-trip. The frontend
-/// calls this per repo through a small concurrency pool so the work streams in
-/// (each call runs on a Tauri background thread) without spawning a `gh` storm.
+/// calls this per repo through a small concurrency pool; each call is async
+/// (never on the main thread) and both halves are individually cached.
 #[derive(Serialize)]
 pub struct GhRepoActivity {
     pub repo: String,
@@ -337,9 +564,16 @@ pub struct GhRepoActivity {
 }
 
 #[tauri::command]
-pub fn github_repo_activity(repo: String, commit_limit: u32) -> Result<GhRepoActivity, String> {
-    let commits = github_commits(vec![repo.clone()], commit_limit)?;
-    let issues = github_issues(vec![repo.clone()])?;
+pub async fn github_repo_activity(
+    app: AppHandle,
+    repo: String,
+    commit_limit: u32,
+    force: Option<bool>,
+) -> Result<GhRepoActivity, String> {
+    let per_page = commit_limit.clamp(1, 100).to_string();
+    let f = force.unwrap_or(false);
+    let commits = commits_for(&app, &repo, &per_page, f).await;
+    let issues = issues_for(&app, &repo, f).await;
     Ok(GhRepoActivity {
         repo,
         commits,
@@ -351,10 +585,20 @@ pub fn github_repo_activity(repo: String, commit_limit: u32) -> Result<GhRepoAct
 /// repo selection. This is the GitHub "green squares" activity, sourced in one
 /// GraphQL call so the dashboard heatmap stays stable as repos are toggled.
 #[tauri::command]
-pub fn github_contribution_calendar() -> Result<Vec<GhDay>, String> {
+pub async fn github_contribution_calendar(
+    app: AppHandle,
+    force: Option<bool>,
+) -> Result<Vec<GhDay>, String> {
     let query = "query { viewer { contributionsCollection { contributionCalendar { \
                  weeks { contributionDays { date contributionCount } } } } } }";
-    let out = run_gh(&["api", "graphql", "-f", &format!("query={query}")])?;
+    let out = gh_cached(
+        &app,
+        args(&["api", "graphql", "-f", &format!("query={query}")]),
+        TTL_CALENDAR,
+        "calendar".into(),
+        force.unwrap_or(false),
+    )
+    .await?;
     let v = parse(&out)?;
     let weeks = v
         .pointer("/data/viewer/contributionsCollection/contributionCalendar/weeks")
@@ -379,9 +623,20 @@ pub fn github_contribution_calendar() -> Result<Vec<GhDay>, String> {
 
 /// Contributors to a single `owner/repo`, most commits first.
 #[tauri::command]
-pub fn github_contributors(repo: String) -> Result<Vec<GhContributor>, String> {
+pub async fn github_contributors(
+    app: AppHandle,
+    repo: String,
+) -> Result<Vec<GhContributor>, String> {
     let path = format!("repos/{repo}/contributors?per_page=20");
-    let out = match run_gh(&["api", &path]) {
+    let out = match gh_cached(
+        &app,
+        args(&["api", &path]),
+        TTL_CONTRIBUTORS,
+        format!("contributors:{repo}"),
+        false,
+    )
+    .await
+    {
         Ok(o) => o,
         Err(_) => return Ok(Vec::new()),
     };
@@ -398,4 +653,62 @@ pub fn github_contributors(repo: String) -> Result<Vec<GhContributor>, String> {
                 .collect()
         })
         .unwrap_or_default())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cache_key_is_deterministic_and_distinct() {
+        let a = args(&["api", "user"]);
+        let b = args(&["api", "user"]);
+        let c = args(&["api", "repos/x/y/commits?per_page=15"]);
+        assert_eq!(cache_key(&a), cache_key(&b));
+        assert_ne!(cache_key(&a), cache_key(&c));
+    }
+
+    #[test]
+    fn freshness_respects_ttl() {
+        let now = 10_000;
+        assert!(is_fresh(now - 100, now, Duration::from_secs(180)));
+        assert!(!is_fresh(now - 200, now, Duration::from_secs(180)));
+        // Clock skew (entry from the "future") must not underflow.
+        assert!(is_fresh(now + 50, now, Duration::from_secs(1)));
+    }
+
+    #[test]
+    fn cache_round_trips_and_busts_by_repo() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = args(&["api", "repos/me/proj/commits?per_page=15"]);
+        let key = cache_key(&a);
+        write_cache_to(dir.path(), &key, &a, "[1,2,3]");
+
+        let entry = read_cache_from(dir.path(), &key).expect("entry");
+        assert_eq!(entry.body, "[1,2,3]");
+        assert_eq!(entry.args, a);
+
+        // Busting scans by args content, not by key.
+        let other = args(&["api", "repos/other/repo/commits"]);
+        write_cache_to(dir.path(), &cache_key(&other), &other, "[]");
+        // Inline bust logic against the temp dir (bust_cache_containing uses
+        // the real cache dir; the scan logic is identical).
+        for e in std::fs::read_dir(dir.path()).unwrap().flatten() {
+            let raw = std::fs::read_to_string(e.path()).unwrap();
+            let entry: CacheEntry = serde_json::from_str(&raw).unwrap();
+            if entry.args.iter().any(|s| s.contains("me/proj")) {
+                std::fs::remove_file(e.path()).unwrap();
+            }
+        }
+        assert!(read_cache_from(dir.path(), &key).is_none());
+        assert!(read_cache_from(dir.path(), &cache_key(&other)).is_some());
+    }
+
+    #[test]
+    fn points_parse_from_labels() {
+        assert_eq!(points_from_label("sp:3"), Some(3));
+        assert_eq!(points_from_label("points: 5"), Some(5));
+        assert_eq!(points_from_label("8"), Some(8));
+        assert_eq!(points_from_label("bug-2"), None);
+    }
 }

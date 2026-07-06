@@ -22,5 +22,11 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 anyhow = "1"
 window-vibrancy = "0.6"
+# Async gh calls: tokio's process/sync (tauri already pins tokio 1.x).
+tokio = { version = "1", features = ["process", "sync"] }
+dirs = "6"
 
 notez-core = { path = "../../crates/notez-core" }
+
+[dev-dependencies]
+tempfile = "3"
