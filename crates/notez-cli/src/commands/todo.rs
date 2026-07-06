@@ -1,24 +1,26 @@
 //! `notez todo` / `todoz`: todo manager.
 //!
-//! Quick-add works; the interactive TUI is still a placeholder. The current
-//! notez-cli todo TUI is the most feature-rich part of the project (subtasks,
-//! tags, drag-to-reorder, code TODO scanning); it ports to notez2 in a
-//! follow-up. The TUI logic itself moves with minor changes; only the
-//! file-source layer changes (registry-based instead of symlinks).
+//! `todoz "text"` quick-adds to the scope's TODO.md. Without an item the
+//! interactive board TUI opens: `-g` shows the full aggregated board
+//! (global + `_todos` categories + every registered project's scopes),
+//! any other scope shows that scope's single TODO.md plus, when inside a
+//! project, read-only TODOs scanned from the code.
 
-use anyhow::{Context, Result, bail};
+use std::path::PathBuf;
 
-use notez_core::config::Config;
-use notez_core::core::{Scope, resolve};
+use anyhow::{Context, Result};
+
+use notez_core::config::{Config, ProjectRegistry};
+use notez_core::core::{Project, Scope, resolve};
+use notez_core::todo::{self, CheckState, Task};
 use notez_core::util::tilde;
+
+use crate::tui::todo::{BoardContext, run_board};
 
 pub fn run(item: Option<String>, scope: Scope, config: &Config) -> Result<()> {
     match item {
         Some(text) => quick_add(text, scope, config),
-        None => bail!(
-            "todo TUI not yet implemented in notez2; use the epoz desktop app, \
-             or `todoz \"item\"` to quick-add"
-        ),
+        None => launch_tui(scope, config),
     }
 }
 
@@ -43,6 +45,196 @@ fn quick_add(text: String, scope: Scope, config: &Config) -> Result<()> {
 
     println!("Added to {}", tilde::contract(&path));
     Ok(())
+}
+
+/// Assemble the board for the scope, run the TUI, persist only the files
+/// the user actually changed (a quit with no edits writes nothing, and
+/// untouched files keep any non-todo text they carry).
+fn launch_tui(scope: Scope, config: &Config) -> Result<()> {
+    let (items, ctx) = build_board(scope, config)?;
+    let outcome = run_board(items, &ctx, config)?;
+    todo::save_todos_for(&outcome.items, &outcome.dirty)
+        .context("failed to save TODO.md files")?;
+    Ok(())
+}
+
+fn build_board(scope: Scope, config: &Config) -> Result<(Vec<Task>, BoardContext)> {
+    if scope == Scope::Global {
+        let registry = ProjectRegistry::load().unwrap_or_default();
+        let items = todo::load_board(config, &registry);
+        let ctx = BoardContext {
+            global: true,
+            title: "todoz (global)".to_string(),
+            path_display: tilde::contract(&config.notez_root_path()),
+        };
+        return Ok((items, ctx));
+    }
+
+    // Single-scope board: one synthesized section header + that scope's
+    // TODO.md, so the TUI always has a section to add into.
+    let root = resolve::root(scope, config)?;
+    let path = root.join("TODO.md");
+    let (name, label) = match Project::try_detect() {
+        Some(p) => {
+            let label = format!("{} ({})", p.name, scope);
+            (p.name, label)
+        }
+        None => (scope.to_string(), scope.to_string()),
+    };
+
+    let mut items = vec![Task {
+        text: label,
+        state: CheckState::Unchecked,
+        source: path.clone(),
+        section: name.clone(),
+        is_header: true,
+        depth: 0,
+        has_subtasks: false,
+        collapsed: false,
+        is_code_todo: false,
+        flags: 0,
+    }];
+    items.extend(todo::load_single_todo(&path, &name));
+
+    // Read-only TODOs scanned from the project's code, shown under their
+    // own section. Never serialized (is_code_todo).
+    let code_todos = scan_code_todos();
+    if !code_todos.is_empty() {
+        items.push(Task {
+            text: format!("\u{f121} code TODOs  ({} found)", code_todos.len()),
+            state: CheckState::Unchecked,
+            source: PathBuf::new(),
+            section: "code".to_string(),
+            is_header: true,
+            depth: 0,
+            has_subtasks: false,
+            collapsed: false,
+            is_code_todo: true,
+            flags: 0,
+        });
+        items.extend(code_todos);
+    }
+
+    let ctx = BoardContext {
+        global: false,
+        title: format!("{} todoz ({})", scope.icon(), name),
+        path_display: tilde::contract(&root),
+    };
+    Ok((items, ctx))
+}
+
+/// Scan the current directory's code for `TODO` comments via `rg` (fallback
+/// `grep`) and return them as read-only board rows.
+fn scan_code_todos() -> Vec<Task> {
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let mut results = Vec::new();
+
+    let output = std::process::Command::new("rg")
+        .args([
+            "--line-number",
+            "--no-heading",
+            "--glob",
+            "!.notez/**",
+            "--glob",
+            "!notez/**",
+            "--glob",
+            "!node_modules/**",
+            "--glob",
+            "!target/**",
+            "--glob",
+            "!.git/**",
+            "--glob",
+            "!*.md",
+            r"(?://|#|--|/\*|<!--)\s*TODO\b",
+        ])
+        .current_dir(&cwd)
+        .output();
+
+    let lines = match output {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).to_string(),
+        _ => {
+            let o = std::process::Command::new("grep")
+                .args([
+                    "-rn",
+                    "--include=*.rs",
+                    "--include=*.ts",
+                    "--include=*.js",
+                    "--include=*.py",
+                    "--include=*.go",
+                    "--include=*.java",
+                    "--include=*.kt",
+                    "--include=*.c",
+                    "--include=*.cpp",
+                    "--include=*.h",
+                    "--include=*.sh",
+                    "--include=*.toml",
+                    "--include=*.yaml",
+                    "--include=*.yml",
+                    "TODO",
+                ])
+                .current_dir(&cwd)
+                .output();
+            match o {
+                Ok(o) => String::from_utf8_lossy(&o.stdout).to_string(),
+                Err(_) => return results,
+            }
+        }
+    };
+
+    for line in lines.lines() {
+        // rg/grep format: file:line:content
+        let parts: Vec<&str> = line.splitn(3, ':').collect();
+        if parts.len() < 3 {
+            continue;
+        }
+        let file = parts[0];
+        let line_num = parts[1];
+        let content = parts[2].trim();
+
+        let todo_text = content
+            .trim_start_matches("//")
+            .trim_start_matches('#')
+            .trim_start_matches("--")
+            .trim_start_matches("/*")
+            .trim_start_matches("<!--")
+            .trim()
+            .trim_start_matches("TODO")
+            .trim_start_matches(':')
+            .trim();
+
+        let short_file = std::path::Path::new(file)
+            .file_name()
+            .map(|f| f.to_string_lossy().to_string())
+            .unwrap_or_else(|| file.to_string());
+        // Truncate on a char boundary; a byte slice can split a multi-byte
+        // char (å, ö) and panic.
+        let truncated: String = if todo_text.chars().count() > 60 {
+            let head: String = todo_text.chars().take(60).collect();
+            format!("{}\u{2026}", head.trim_end())
+        } else {
+            todo_text.to_string()
+        };
+        let display = if truncated.is_empty() {
+            format!("{}:{}", short_file, line_num)
+        } else {
+            format!("{}:{} {}", short_file, line_num, truncated)
+        };
+
+        results.push(Task {
+            text: display,
+            state: CheckState::Unchecked,
+            source: PathBuf::from(file),
+            section: "code".to_string(),
+            is_header: false,
+            depth: 0,
+            has_subtasks: false,
+            collapsed: false,
+            is_code_todo: true,
+            flags: 0,
+        });
+    }
+
+    results
 }
 
 #[cfg(test)]
@@ -80,9 +272,14 @@ mod tests {
     }
 
     #[test]
-    fn tui_without_item_still_bails() {
+    fn global_board_builds_with_global_context() {
         let dir = tempdir().unwrap();
         let config = config_in(dir.path());
-        assert!(run(None, Scope::Global, &config).is_err());
+        std::fs::write(dir.path().join("TODO.md"), "# TODO\n\n- [ ] a\n").unwrap();
+
+        let (items, ctx) = build_board(Scope::Global, &config).unwrap();
+        assert!(ctx.global);
+        assert!(items.iter().any(|t| t.is_header && t.text == "GLOBAL"));
+        assert!(items.iter().any(|t| !t.is_header && t.text == "a"));
     }
 }

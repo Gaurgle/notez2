@@ -303,7 +303,7 @@ pub fn load_board(config: &Config, registry: &ProjectRegistry) -> Vec<Task> {
         true,
     );
 
-    // _todos/<category>/TODO.md — always shown.
+    // _todos/<category>/TODO.md - always shown.
     if let Ok(entries) = std::fs::read_dir(notez_root.join("_todos")) {
         let mut dirs: Vec<_> = entries.flatten().filter(|e| e.path().is_dir()).collect();
         dirs.sort_by_key(|e| e.file_name());
@@ -367,10 +367,30 @@ pub fn load_scope_board(scope: Scope, config: &Config) -> anyhow::Result<Vec<Tas
 /// Write every distinct source file represented in `items`, deduping by
 /// canonical path so a file reached two ways isn't written twice.
 pub fn save_all_todos(items: &[Task]) -> std::io::Result<()> {
-    let mut sources: Vec<PathBuf> = Vec::new();
+    let all: std::collections::HashSet<PathBuf> = items
+        .iter()
+        .filter(|i| !i.is_code_todo)
+        .map(|i| i.source.clone())
+        .collect();
+    save_todos_for(items, &all)
+}
+
+/// Write only the source files in `sources`; everything else on the board is
+/// left untouched on disk. An empty set writes nothing. This is the save
+/// path for editors that track dirty files: rewriting a `TODO.md` drops any
+/// non-todo text in it (see [`has_non_todo_content`]), so only files the
+/// user actually changed should be rewritten.
+pub fn save_todos_for(
+    items: &[Task],
+    sources: &std::collections::HashSet<PathBuf>,
+) -> std::io::Result<()> {
+    let mut targets: Vec<PathBuf> = Vec::new();
     let mut seen_canonical: Vec<PathBuf> = Vec::new();
     for item in items {
-        if item.is_code_todo || sources.contains(&item.source) {
+        if item.is_code_todo
+            || !sources.contains(&item.source)
+            || targets.contains(&item.source)
+        {
             continue;
         }
         let canonical = item
@@ -381,9 +401,9 @@ pub fn save_all_todos(items: &[Task]) -> std::io::Result<()> {
             continue;
         }
         seen_canonical.push(canonical);
-        sources.push(item.source.clone());
+        targets.push(item.source.clone());
     }
-    for source in &sources {
+    for source in &targets {
         let content = serialize_tasks_for_file(items, source);
         if let Some(parent) = source.parent() {
             std::fs::create_dir_all(parent)?;
@@ -391,6 +411,22 @@ pub fn save_all_todos(items: &[Task]) -> std::io::Result<()> {
         std::fs::write(source, content)?;
     }
     Ok(())
+}
+
+/// True when `content` holds lines the todo parser does not model: prose,
+/// extra markdown headers, anything that is not the `# TODO` title, a blank
+/// line, or a checkbox line. Serializing a board over such a file drops
+/// those lines, so callers should warn before rewriting it.
+pub fn has_non_todo_content(content: &str) -> bool {
+    content.lines().any(|line| {
+        let trimmed = line.trim();
+        !(trimmed.is_empty()
+            || trimmed == "# TODO"
+            || trimmed.starts_with("- [ ] ")
+            || trimmed.starts_with("- [/] ")
+            || trimmed.starts_with("- [x] ")
+            || trimmed.starts_with("- [X] "))
+    })
 }
 
 // --- Mutators (operate on the in-memory board; caller persists) ---
@@ -637,5 +673,53 @@ mod tests {
         save_all_todos(&items).unwrap();
         let reloaded = std::fs::read_to_string(&path).unwrap();
         assert_eq!(reloaded, "# TODO\n\n- [ ] write more tests #important\n");
+    }
+
+    #[test]
+    fn save_todos_for_empty_set_writes_nothing() {
+        // A file with prose would lose it on any rewrite; an empty dirty set
+        // must therefore leave it byte-identical.
+        let content = "# TODO\n\n## Ideas\n\nsome prose here\n\n- [ ] a\n";
+        let (_d, path) = write_todo(content);
+        let items = load_single_todo(&path, "t");
+
+        save_todos_for(&items, &std::collections::HashSet::new()).unwrap();
+
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), content);
+    }
+
+    #[test]
+    fn save_todos_for_touches_only_given_sources() {
+        let dir = tempdir().unwrap();
+        let a = dir.path().join("a/TODO.md");
+        let b = dir.path().join("b/TODO.md");
+        std::fs::create_dir_all(a.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(b.parent().unwrap()).unwrap();
+        std::fs::write(&a, "# TODO\n\n- [ ] task a\n").unwrap();
+        let b_content = "# TODO\n\n## prose section\n\n- [ ] task b\n";
+        std::fs::write(&b, b_content).unwrap();
+
+        let mut items = load_single_todo(&a, "a");
+        items.extend(load_single_todo(&b, "b"));
+        edit_text(&mut items, 0, "task a edited".into());
+
+        let dirty: std::collections::HashSet<PathBuf> = [a.clone()].into();
+        save_todos_for(&items, &dirty).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(&a).unwrap(),
+            "# TODO\n\n- [ ] task a edited\n"
+        );
+        // The untouched file keeps its prose, byte for byte.
+        assert_eq!(std::fs::read_to_string(&b).unwrap(), b_content);
+    }
+
+    #[test]
+    fn detects_non_todo_content() {
+        assert!(!has_non_todo_content("# TODO\n\n- [ ] a\n  - [x] b\n- [/] c\n"));
+        assert!(!has_non_todo_content(""));
+        assert!(has_non_todo_content("# TODO\n\n## Feature ideas\n"));
+        assert!(has_non_todo_content("# TODO\n\nplain paragraph text\n"));
+        assert!(has_non_todo_content("# other title\n- [ ] a\n"));
     }
 }
