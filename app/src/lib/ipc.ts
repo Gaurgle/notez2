@@ -33,13 +33,16 @@ export const setNoteTags = (path: string, flags: number) =>
   invoke<void>("set_note_tags", { path, flags });
 
 /** Create a new note; resolves to the new file's path. `dir` targets a
- *  folder under the notez root (global scope only). */
+ *  folder under the notez root (global scope only, no project). `project`
+ *  binds a public/personal/scratch note to a registered project; omit it
+ *  for a global note. Public and scratch scopes require a project. */
 export const createNote = (
   scope: Scope,
   title: string,
   body: string | null,
-  dir: string | null = null
-) => invoke<string>("create_note", { scope, title, body, dir });
+  dir: string | null = null,
+  project: string | null = null
+) => invoke<string>("create_note", { scope, title, body, dir, project });
 
 /** Absolute path of the global notez root (for the sidebar folder tree). */
 export const notezRoot = () => invoke<string>("notez_root");
@@ -48,9 +51,10 @@ export const notezRoot = () => invoke<string>("notez_root");
 export const saveNote = (path: string, content: string) =>
   invoke<void>("save_note", { path, content });
 
-/** Append a timestamped entry to today's daily log; resolves to the log path. */
-export const appendLog = (scope: Scope, message: string) =>
-  invoke<string>("append_log", { scope, message });
+/** Append a timestamped entry to today's daily log; resolves to the log path.
+ *  `project` binds the log to a registered project; omit it for global. */
+export const appendLog = (scope: Scope, message: string, project: string | null = null) =>
+  invoke<string>("append_log", { scope, message, project });
 
 // --- todoz ---
 

@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use notez_core::config::{paths, Config, NotezMetadata, ProjectRegistry};
-use notez_core::core::{aggregate, note, project, resolve, Note, Project, Scope};
+use notez_core::core::{aggregate, note, project, Note, Project, Scope};
 use notez_core::todo::{self, Task};
 
 use crate::dto::{NoteListItem, ProjectInfo, SearchHitDto, TodoBoard};
@@ -104,19 +104,73 @@ pub fn read_note(path: String) -> Result<String, String> {
     std::fs::read_to_string(p).map_err(err)
 }
 
-/// Create a new note in the given scope. Mirrors `notez add`: empty titles
-/// become "untitled", the body is optional. Returns the new file's path.
-/// `dir` targets a folder under the notez root (sidebar tree selection);
-/// without it the note lands in the scope's quick-notes dir as before.
+/// Resolve the store root for an explicit scope x binding combination.
+///
+/// The app has no meaningful working directory (the Tauri process cwd is
+/// wherever the app was launched), so project binding always comes from the
+/// registry and global binding from the config root; the process cwd is
+/// never consulted. This is the app-side counterpart of the CLI's
+/// cwd-derived `resolve::root`.
+fn resolve_store_root(
+    scope: Scope,
+    project: Option<&str>,
+    config: &Config,
+    registry: &ProjectRegistry,
+) -> Result<PathBuf, String> {
+    match (scope, project) {
+        (Scope::Global, Some(_)) => Err("global notes are not bound to a project".into()),
+        (Scope::Global, None) => Ok(config.notez_root_path()),
+        // personal+global is the valid no-project combo of the two-axis
+        // model; public/scratch are meaningless without a project here.
+        (Scope::Personal, None) => Ok(config.notez_root_path()),
+        (scope, None) => Err(format!("a project is required for {} notes", scope.label())),
+        (scope, Some(name)) => {
+            let local_path = registry
+                .resolve(name)
+                .ok_or_else(|| format!("unknown project: {name}"))?;
+            match scope {
+                Scope::Personal => {
+                    // Personal notes live in the notez repo, not the project,
+                    // so the project dir need not exist on this machine.
+                    Ok(config.notez_root_path().join("personal").join(name))
+                }
+                Scope::Public | Scope::Local => {
+                    if !local_path.exists() {
+                        return Err(format!(
+                            "project {name} is not reachable on this machine ({})",
+                            local_path.display()
+                        ));
+                    }
+                    Ok(match scope {
+                        Scope::Public => local_path.join("notez"),
+                        _ => local_path.join(".notez"),
+                    })
+                }
+                Scope::Global => unreachable!("handled above"),
+            }
+        }
+    }
+}
+
+/// Create a new note. Mirrors `notez add`: empty titles become "untitled",
+/// the body is optional. Returns the new file's path.
+///
+/// Binding is explicit: `project` names a registered project (personal /
+/// public / scratch stores), no project means global. `dir` targets a folder
+/// under the notez root (sidebar tree selection, global only); without it
+/// the note lands in the store's quick-notes dir.
 #[tauri::command]
 pub fn create_note(
     scope: Scope,
     title: String,
     body: Option<String>,
     dir: Option<String>,
+    project: Option<String>,
 ) -> Result<String, String> {
     let config = Config::load().map_err(err)?;
+    let registry = ProjectRegistry::load().map_err(err)?;
     let body = body.filter(|b| !b.trim().is_empty());
+    let project = project.filter(|p| !p.trim().is_empty());
     let note = Note::new(title, body);
 
     let target = match dir.filter(|d| !d.trim().is_empty()) {
@@ -125,7 +179,7 @@ pub fn create_note(
         // tree) and canonicalize inside the root, so a crafted relative path
         // cannot escape it.
         Some(rel) => {
-            if scope != Scope::Global {
+            if scope != Scope::Global || project.is_some() {
                 return Err("folder target is only valid for global notes".into());
             }
             let root = config.notez_root_path().canonicalize().map_err(err)?;
@@ -136,7 +190,9 @@ pub fn create_note(
             joined
         }
         None => {
-            let d = resolve::quick_notes(scope, &config).map_err(err)?;
+            let store =
+                resolve_store_root(scope, project.as_deref(), &config, &registry)?;
+            let d = store.join(&config.paths.quick_notes_dir);
             std::fs::create_dir_all(&d).map_err(err)?;
             if scope == Scope::Local {
                 project::ensure_scratch_gitignored(&d);
@@ -170,16 +226,24 @@ pub fn save_note(path: String, content: String) -> Result<(), String> {
 }
 
 /// Append a timestamped entry to today's daily log. Mirrors `notez log`.
-/// Returns the log file's path.
+/// Returns the log file's path. Binding is explicit like `create_note`:
+/// `project` targets that project's store, no project means global.
 #[tauri::command]
-pub fn append_log(scope: Scope, message: String) -> Result<String, String> {
+pub fn append_log(
+    scope: Scope,
+    message: String,
+    project: Option<String>,
+) -> Result<String, String> {
     let message = message.trim().to_string();
     if message.is_empty() {
         return Err("log message cannot be empty".into());
     }
     let config = Config::load().map_err(err)?;
+    let registry = ProjectRegistry::load().map_err(err)?;
+    let project = project.filter(|p| !p.trim().is_empty());
 
-    let dir = resolve::daily_logs(scope, &config).map_err(err)?;
+    let store = resolve_store_root(scope, project.as_deref(), &config, &registry)?;
+    let dir = store.join(&config.paths.daily_logs_dir);
     std::fs::create_dir_all(&dir).map_err(err)?;
     if scope == Scope::Local {
         project::ensure_scratch_gitignored(&dir);
