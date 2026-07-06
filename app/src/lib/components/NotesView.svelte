@@ -697,8 +697,15 @@
   }
   .toaster {
     position: fixed;
-    bottom: 1rem;
-    right: 1rem;
+    /* Popovers live in the top layer with UA defaults (inset: 0, margin:
+       auto, canvas background, solid border) that render an empty toaster
+       as a small white box mid-viewport. Override all of them, not just
+       bottom/right. */
+    inset: auto 1rem 1rem auto;
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: none;
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
