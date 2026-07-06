@@ -5,6 +5,8 @@
   let {
     title,
     scope = null,
+    kind = null,
+    project = null,
     flags = 0,
     rows = [],
     width = 250,
@@ -14,6 +16,10 @@
   }: {
     title: string | null;
     scope?: string | null;
+    /** "doc" adds a docs badge next to the scope badge. */
+    kind?: string | null;
+    /** Owning project/repo, shown as a pill next to the scope badge. */
+    project?: string | null;
     flags?: number;
     rows?: { label: string; value: string }[];
     width?: number;
@@ -30,6 +36,12 @@
     <div class="title">{title}</div>
     {#if scope}
       <span class="badge {scope}">{scope}</span>
+    {/if}
+    {#if kind === "doc"}
+      <span class="badge docs">docs</span>
+    {/if}
+    {#if project}
+      <span class="badge project">{project}</span>
     {/if}
 
     {#if people.length}
@@ -113,6 +125,18 @@
   }
   .badge.global {
     color: var(--accent-global);
+  }
+  .badge.docs {
+    color: var(--accent-public);
+    background: none;
+    border: 1px dashed color-mix(in srgb, var(--accent-public) 45%, transparent);
+    margin-left: 0.3rem;
+  }
+  .badge.project {
+    color: var(--subtext);
+    background: var(--surface);
+    text-transform: none;
+    margin-left: 0.3rem;
   }
   .sec-label {
     margin-top: 0.85rem;

@@ -10,6 +10,7 @@ import type {
   PlanItem,
   ProjectInfo,
   Scope,
+  SearchHit,
   TodoBoard,
 } from "./types";
 
@@ -19,6 +20,10 @@ export const listNotes = () => invoke<NoteListItem[]>("list_notes");
 /** Notes for a single scope, resolved against the current directory. */
 export const listNotesInScope = (scope: Scope) =>
   invoke<NoteListItem[]>("list_notes_in_scope", { scope });
+
+/** Case-insensitive full-text search across every note and doc source. */
+export const searchNotes = (query: string) =>
+  invoke<SearchHit[]>("search_notes", { query });
 
 /** Read a markdown note's contents. */
 export const readNote = (path: string) => invoke<string>("read_note", { path });

@@ -17,10 +17,10 @@
     width = 220,
   }: {
     notes: NoteListItem[];
-    activeScope: Scope | "all";
+    activeScope: Scope | "all" | "docs";
     activeProject: string | null;
     registeredProjects: ProjectInfo[];
-    onScope: (s: Scope | "all") => void;
+    onScope: (s: Scope | "all" | "docs") => void;
     onProject: (p: string | null) => void;
     onAttach: () => void;
     onDetach: (name: string) => void;
@@ -29,10 +29,12 @@
     width?: number;
   } = $props();
 
-  function countFor(scope: Scope | "all"): number {
+  function countFor(scope: Scope | "all" | "docs"): number {
     return scope === "all"
       ? notes.length
-      : notes.filter((n) => n.scope === scope).length;
+      : scope === "docs"
+        ? notes.filter((n) => n.kind === "doc").length
+        : notes.filter((n) => n.scope === scope).length;
   }
 
   // Hover handlers (spreadable) so hovering a scope/project drives the inspector.
@@ -98,6 +100,16 @@
       <span class="dot global"></span>
       <span class="item-label">{SCOPE_META.global.label}</span>
       <span class="count">{countFor("global")}</span>
+    </button>
+    <button
+      class="item"
+      class:active={activeProject === null && activeScope === "docs"}
+      onclick={() => onScope("docs")}
+      {...navHov("scope", "docs")}
+    >
+      <span class="dot docs"></span>
+      <span class="item-label">Docs</span>
+      <span class="count">{countFor("docs")}</span>
     </button>
   </nav>
 
@@ -188,6 +200,10 @@
   .dot.public { background: var(--accent-public); }
   .dot.local { background: var(--accent-local); }
   .dot.global { background: var(--accent-global); }
+  .dot.docs {
+    background: none;
+    border: 1.5px dashed var(--accent-public);
+  }
 
   .group-head {
     display: flex;

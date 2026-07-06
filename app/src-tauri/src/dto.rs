@@ -6,8 +6,9 @@
 
 use serde::Serialize;
 
-use notez_core::core::aggregate::NoteEntry;
+use notez_core::core::aggregate::{NoteEntry, SourceKind};
 use notez_core::core::Scope;
+use notez_core::search::SearchHit;
 use notez_core::todo::{CheckState, Task};
 
 /// One row in the note list.
@@ -21,6 +22,8 @@ pub struct NoteListItem {
     pub scope: Scope,
     /// Owning project, if any.
     pub project: Option<String>,
+    /// Note vs project doc ("note" | "doc").
+    pub kind: SourceKind,
     /// 5-bit importance tag flags from the root `.tags` file.
     pub flags: u8,
     /// Last-modified time, seconds since the Unix epoch (0 if unavailable).
@@ -40,8 +43,43 @@ impl From<&NoteEntry> for NoteListItem {
             name: entry.name.clone(),
             scope: entry.scope,
             project: entry.project.clone(),
+            kind: entry.kind,
             flags: 0,
             modified,
+        }
+    }
+}
+
+/// One full-text search hit, anchored at its first matching line.
+#[derive(Serialize)]
+pub struct SearchHitDto {
+    pub path: String,
+    pub name: String,
+    pub scope: Scope,
+    pub project: Option<String>,
+    pub kind: SourceKind,
+    /// 1-based line number of the first match.
+    pub line: usize,
+    /// The first matching line, trimmed.
+    pub snippet: String,
+    /// Total matching lines in the file.
+    pub match_count: usize,
+    /// True when the filename itself also matches the query.
+    pub name_match: bool,
+}
+
+impl From<&SearchHit> for SearchHitDto {
+    fn from(hit: &SearchHit) -> Self {
+        Self {
+            path: hit.entry.path.to_string_lossy().into_owned(),
+            name: hit.entry.name.clone(),
+            scope: hit.entry.scope,
+            project: hit.entry.project.clone(),
+            kind: hit.entry.kind,
+            line: hit.line,
+            snippet: hit.snippet.clone(),
+            match_count: hit.match_count,
+            name_match: hit.name_match,
         }
     }
 }

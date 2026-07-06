@@ -1,13 +1,34 @@
 export type Scope = "local" | "personal" | "public" | "global";
 
+/** Note vs project doc (markdown from a repo's docs/ directory). */
+export type SourceKind = "note" | "doc";
+
 export interface NoteListItem {
   path: string;
   name: string;
   scope: Scope;
   project: string | null;
+  kind: SourceKind;
   flags: number;
   /** Last-modified time, seconds since the Unix epoch. */
   modified: number;
+}
+
+/** One full-text search hit, anchored at its first matching line. */
+export interface SearchHit {
+  path: string;
+  name: string;
+  scope: Scope;
+  project: string | null;
+  kind: SourceKind;
+  /** 1-based line number of the first match. */
+  line: number;
+  /** The first matching line, trimmed. */
+  snippet: string;
+  /** Total matching lines in the file. */
+  match_count: number;
+  /** True when the filename itself also matches the query. */
+  name_match: boolean;
 }
 
 export const SCOPE_META: Record<Scope, { label: string; icon: string }> = {

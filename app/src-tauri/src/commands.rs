@@ -1,13 +1,15 @@
 //! Tauri command surface. Each command wraps a notez-core function and
 //! returns either serializable data or a rendered error string.
 
+use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::Mutex;
 
 use notez_core::config::{paths, Config, NotezMetadata, ProjectRegistry};
 use notez_core::core::{aggregate, note, resolve, Note, Project, Scope};
 use notez_core::todo::{self, Task};
 
-use crate::dto::{NoteListItem, ProjectInfo, TodoBoard};
+use crate::dto::{NoteListItem, ProjectInfo, SearchHitDto, TodoBoard};
 
 /// The live todoz board, held in Tauri-managed state so the indices the
 /// frontend sends stay valid between calls.
@@ -47,6 +49,15 @@ pub fn list_notes() -> Result<Vec<NoteListItem>, String> {
         })
         .collect();
     Ok(items)
+}
+
+/// Case-insensitive full-text search across every note and doc source.
+#[tauri::command]
+pub fn search_notes(query: String) -> Result<Vec<SearchHitDto>, String> {
+    let config = Config::load().map_err(err)?;
+    let registry = ProjectRegistry::load().map_err(err)?;
+    let hits = notez_core::search::search_notes(&query, &config, &registry).map_err(err)?;
+    Ok(hits.iter().map(SearchHitDto::from).collect())
 }
 
 /// Importance flags for one note (from its root `.tags`).
@@ -248,10 +259,23 @@ fn lock(state: &BoardState) -> Result<std::sync::MutexGuard<'_, Vec<Task>>, Stri
     state.lock().map_err(|_| "todoz board lock poisoned".to_string())
 }
 
-/// Persist every touched TODO.md and return the refreshed board.
-fn persisted(guard: &[Task]) -> Result<TodoBoard, String> {
-    todo::save_all_todos(guard).map_err(err)?;
+/// Persist only the TODO.md the mutation touched and return the refreshed
+/// board. `source: None` (header/no-op mutations) writes nothing, so files
+/// the user never edited are never rewritten (rewrites are lossy for
+/// non-todo text).
+fn persisted(guard: &[Task], source: Option<PathBuf>) -> Result<TodoBoard, String> {
+    let sources: HashSet<PathBuf> = source.into_iter().collect();
+    todo::save_todos_for(guard, &sources).map_err(err)?;
     Ok(TodoBoard::from_tasks(guard))
+}
+
+/// The source file a mutation of `idx` will touch. Headers and code todos
+/// never persist, so mutations that no-op on them save nothing.
+fn task_source(guard: &[Task], idx: usize) -> Option<PathBuf> {
+    guard
+        .get(idx)
+        .filter(|t| !t.is_header && !t.is_code_todo)
+        .map(|t| t.source.clone())
 }
 
 /// Load the global todoz board (all scopes) into managed state.
@@ -306,8 +330,9 @@ pub fn load_scope_todo_board(
 #[tauri::command]
 pub fn toggle_task(idx: usize, state: tauri::State<BoardState>) -> Result<TodoBoard, String> {
     let mut guard = lock(&state)?;
+    let source = task_source(&guard, idx);
     todo::toggle_done(&mut guard, idx);
-    persisted(&guard)
+    persisted(&guard, source)
 }
 
 #[tauri::command]
@@ -317,8 +342,9 @@ pub fn set_task_flags(
     state: tauri::State<BoardState>,
 ) -> Result<TodoBoard, String> {
     let mut guard = lock(&state)?;
+    let source = task_source(&guard, idx);
     todo::set_flags(&mut guard, idx, flags);
-    persisted(&guard)
+    persisted(&guard, source)
 }
 
 #[tauri::command]
@@ -328,8 +354,9 @@ pub fn edit_task(
     state: tauri::State<BoardState>,
 ) -> Result<TodoBoard, String> {
     let mut guard = lock(&state)?;
+    let source = task_source(&guard, idx);
     todo::edit_text(&mut guard, idx, text);
-    persisted(&guard)
+    persisted(&guard, source)
 }
 
 #[tauri::command]
@@ -340,15 +367,19 @@ pub fn add_todo(
     state: tauri::State<BoardState>,
 ) -> Result<TodoBoard, String> {
     let mut guard = lock(&state)?;
+    // The new task inherits `after`'s source (headers included: adding under
+    // a section header writes that section's file).
+    let source = guard.get(after).map(|t| t.source.clone());
     todo::add_task(&mut guard, after, depth, text);
-    persisted(&guard)
+    persisted(&guard, source)
 }
 
 #[tauri::command]
 pub fn remove_todo(idx: usize, state: tauri::State<BoardState>) -> Result<TodoBoard, String> {
     let mut guard = lock(&state)?;
+    let source = task_source(&guard, idx);
     todo::remove_task(&mut guard, idx);
-    persisted(&guard)
+    persisted(&guard, source)
 }
 
 #[tauri::command]
@@ -359,9 +390,10 @@ pub fn reorder_task(
 ) -> Result<TodoBoard, String> {
     let mut guard = lock(&state)?;
     if todo::can_drag(&guard, start, target) {
+        let source = task_source(&guard, start);
         todo::perform_drag_move(&mut guard, start, target);
         todo::derive_parent_states(&mut guard);
-        persisted(&guard)
+        persisted(&guard, source)
     } else {
         // Invalid drag: return the board unchanged.
         Ok(TodoBoard::from_tasks(&guard))
@@ -394,16 +426,22 @@ pub fn set_task_state(
         other => return Err(format!("invalid state: {other}")),
     };
     let mut guard = lock(&board)?;
+    let source = task_source(&guard, idx);
     todo::set_state(&mut guard, idx, cs);
-    persisted(&guard)
+    persisted(&guard, source)
 }
 
 /// Move a task up or down among its siblings.
 #[tauri::command]
 pub fn move_todo(idx: usize, up: bool, state: tauri::State<BoardState>) -> Result<TodoBoard, String> {
     let mut guard = lock(&state)?;
-    todo::move_task(&mut guard, idx, up);
-    persisted(&guard)
+    let source = task_source(&guard, idx);
+    let new_idx = todo::move_task(&mut guard, idx, up);
+    if new_idx == idx {
+        // No sibling to swap with: nothing changed, write nothing.
+        return Ok(TodoBoard::from_tasks(&guard));
+    }
+    persisted(&guard, source)
 }
 
 /// Collapse or expand every section/parent. View-only, never persisted.

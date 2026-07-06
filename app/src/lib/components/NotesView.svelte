@@ -39,8 +39,9 @@
     attachProject,
     detachProject,
     syncNotez,
+    searchNotes,
   } from "$lib/ipc";
-  import type { NoteListItem, ProjectInfo, Scope } from "$lib/types";
+  import type { NoteListItem, ProjectInfo, Scope, SearchHit } from "$lib/types";
 
   let { active = true }: { active?: boolean } = $props();
 
@@ -48,7 +49,7 @@
   let loading = $state(true);
   let error = $state<string | null>(null);
 
-  let activeScope = $state<Scope | "all">("all");
+  let activeScope = $state<Scope | "all" | "docs">("all");
   let activeProject = $state<string | null>(null);
   let searchText = $state("");
   let searchEl = $state<HTMLInputElement>();
@@ -57,7 +58,7 @@
     searchEl?.select();
   };
 
-  function setScope(s: Scope | "all") {
+  function setScope(s: Scope | "all" | "docs") {
     activeScope = s;
     activeProject = null;
     selIndex = 0;
@@ -114,15 +115,23 @@
       const label = isScope
         ? nav.name === "all"
           ? "All notes"
-          : SCOPE_META[nav.name as Scope].label
+          : nav.name === "docs"
+            ? "Docs"
+            : SCOPE_META[nav.name as Scope].label
         : nav.name;
       const set = isScope
-        ? notes.filter((n) => nav.name === "all" || n.scope === nav.name)
+        ? notes.filter(
+            (n) =>
+              nav.name === "all" ||
+              (nav.name === "docs" ? n.kind === "doc" : n.scope === nav.name)
+          )
         : notes.filter((n) => n.project === nav.name);
       const latest = set.reduce((m, n) => Math.max(m, n.modified), 0);
       return {
         title: label,
-        scope: isScope && nav.name !== "all" ? nav.name : null,
+        scope: isScope && nav.name !== "all" && nav.name !== "docs" ? nav.name : null,
+        kind: null as string | null,
+        project: isScope ? null : nav.name,
         flags: 0,
         showTags: false,
         people: mockProjectAuthors(nav.name),
@@ -141,6 +150,8 @@
       return {
         title: null,
         scope: null,
+        kind: null as string | null,
+        project: null as string | null,
         flags: 0,
         showTags: true,
         people: [] as string[],
@@ -151,13 +162,16 @@
     return {
       title: n.name,
       scope: n.scope as string,
+      kind: n.kind as string,
+      project: n.project ?? null,
       flags: n.flags,
       showTags: true,
       people: mockProjectAuthors(n.project ?? n.name),
       time: relativeTime(n.modified),
       rows: [
         { label: "Scope", value: SCOPE_META[n.scope].label },
-        { label: "Project", value: n.project ?? "—" },
+        ...(n.kind === "doc" ? [{ label: "Kind", value: "repo doc (docs/)" }] : []),
+        { label: "Project", value: n.project ?? "-" },
         { label: "Path", value: n.path },
       ],
     };
@@ -208,15 +222,45 @@
   // Days (in any month) that have at least one note — lit up in the calendar.
   let notesByDay = $derived(new Set(notes.map(noteDay)));
 
-  let filtered = $derived(
-    notes
+  // Full-text hits from the backend, debounced as the user types. A sequence
+  // counter drops stale responses that resolve after the query moved on.
+  let contentHits = $state<SearchHit[]>([]);
+  let searchSeq = 0;
+  $effect(() => {
+    const q = searchText.trim();
+    if (q === "") {
+      contentHits = [];
+      return;
+    }
+    const seq = ++searchSeq;
+    const t = setTimeout(async () => {
+      try {
+        const hits = await searchNotes(q);
+        if (seq === searchSeq) contentHits = hits;
+      } catch {
+        if (seq === searchSeq) contentHits = [];
+      }
+    }, 180);
+    return () => clearTimeout(t);
+  });
+
+  // Scope / project / calendar-day narrowing (no text), shared by both the
+  // title match and the content-hit merge so search respects the filters.
+  let baseFiltered = $derived(
+    notes.filter(
+      (n) =>
+        (activeScope === "all" ||
+          (activeScope === "docs" ? n.kind === "doc" : n.scope === activeScope)) &&
+        (activeProject === null || n.project === activeProject) &&
+        (selectedDays.size === 0 || selectedDays.has(noteDay(n)))
+    )
+  );
+  let titleMatched = $derived(
+    baseFiltered
       .filter(
         (n) =>
-          (activeScope === "all" || n.scope === activeScope) &&
-          (activeProject === null || n.project === activeProject) &&
-          (selectedDays.size === 0 || selectedDays.has(noteDay(n))) &&
-          (searchText.trim() === "" ||
-            n.name.toLowerCase().includes(searchText.toLowerCase()))
+          searchText.trim() === "" ||
+          n.name.toLowerCase().includes(searchText.toLowerCase())
       )
       .sort((a, b) =>
         sortMode === "name"
@@ -225,6 +269,20 @@
             ? a.modified - b.modified
             : b.modified - a.modified
       )
+  );
+  let snippetByPath = $derived(new Map(contentHits.map((h) => [h.path, h])));
+  // Files whose content matched but whose title did not: appended after the
+  // title matches, in backend hit order.
+  let contentOnly = $derived.by(() => {
+    if (searchText.trim() === "") return [];
+    const shown = new Set(titleMatched.map((n) => n.path));
+    const byPath = new Map(baseFiltered.map((n) => [n.path, n]));
+    return contentHits
+      .map((h) => byPath.get(h.path))
+      .filter((n): n is NoteListItem => n !== undefined && !shown.has(n.path));
+  });
+  let filtered = $derived(
+    searchText.trim() === "" ? titleMatched : [...titleMatched, ...contentOnly]
   );
 
   async function refresh(selectPath?: string) {
@@ -519,6 +577,7 @@
             onSelect={select}
             {onHover}
             inProjectMode={activeProject !== null}
+            snippets={searchText.trim() ? snippetByPath : null}
           />
         {/if}
       </div>
@@ -564,6 +623,8 @@
           width={inspectorWidth}
           title={insp.title}
           scope={insp.scope}
+          kind={insp.kind}
+          project={insp.project}
           flags={insp.flags}
           showTags={insp.showTags}
           people={insp.people}
