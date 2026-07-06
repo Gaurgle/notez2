@@ -58,8 +58,25 @@ notez add        notez log         notez mkdir
 notez attach     notez detach      notez list
 notez sync       notez setup       notez completions
 notez init       notez --help      notez migrate-from-legacy
-todoz "item"     (quick-add; the todoz TUI itself is not ported yet)
+notez search     todoz             todoz -g
+notez tree       notez -g tree
 ```
+
+**todoz** is the full interactive board TUI (tags, subtasks, drag-to-reorder,
+`#tag` filtering, code-TODO scanning, mouse support); `todoz "item"` quick-adds
+without opening it. Saves rewrite only the files you actually edited, and the
+footer warns if a `TODO.md` contains non-todo text a save would drop.
+
+**notez search** (alias `findz`) is case-insensitive full-text search across
+every note source: global root, every registered project's scopes, and each
+project's `docs/*.md` (surfaced as `docs`; disable with `project_docs = false`
+under `[paths]` in config.toml).
+
+**notez tree** is the interactive tree browser (sections per scope and
+project including `docs`, tag strip + `#tag` filtering, preview pane,
+open-in-editor). Tag changes write only `.tags` roots that actually changed.
+
+Still stubbed: `edit`, `nav`.
 
 `notez migrate-from-legacy` (with `--dry-run`) is the one-time port of a
 notez-cli layout: numbered `NN_project` mirror dirs move to `personal/<project>/`,

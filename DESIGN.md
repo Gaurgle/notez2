@@ -465,12 +465,51 @@ The git-backed file-per-ticket model remains the long-term target but is
 deferred; revisit if Issues become limiting (offline-first editing, custom
 fields, or lossless round-trip with the CLI tools).
 
-### Naming and companion tools (decided 2026-07-05)
+### Search + project docs + safe saves (landed 2026-07-06)
 
-**epoz is the desktop app in `app/`; notez2 is the CLI/core.** Same data
-model, two surfaces. This resolves the earlier "repoz big brother" naming
-confusion: the standalone ratatui multi-repo dashboard TUI that used to hold
-the epoz name was renamed **fleetz** and lives on as a repoz sibling.
+- **Full-text search** (`notez-core/src/search.rs`): rides on
+  `core::aggregate::collect_all`, so the search universe is exactly what the
+  UIs show; case-insensitive substring scan, one hit per file (first line +
+  match count). Consumed by `notez search`/`findz` and epoz's Notes search.
+  No index: the whole corpus is a few MB, scanning is milliseconds.
+- **Project docs as a source**: each registered project's `docs/*.md` is
+  aggregated as `SourceKind::Doc` (Public scope, labeled `docs`), so repo
+  documentation like `airwavez/docs/hardware.md` is findable from the same
+  place as notes. Config: `[paths] project_docs` (default true).
+- **Dirty-source saves**: `todo::save_todos_for(items, sources)` writes only
+  the given files; the todoz TUI tracks dirty sources per mutation, so a
+  no-edit quit writes nothing. Root cause: the serializer is canonical
+  (checkbox-only) and used to rewrite every file on quit, silently dropping
+  prose from `TODO.md`s. A footer warning names sections whose file contains
+  non-todo text before a save would drop it. The desktop app should migrate
+  to the same call (its wholesale `save_all_todos` has the identical hazard).
+
+### Naming and companion tools (decided 2026-07-05, refined 2026-07-06)
+
+**epoz is the product; it has two shells.** The Tauri app in `app/` is
+**Epoz Desktop**. **epoz (TUI)** is a planned umbrella terminal app with the
+same rail (Home / Notes / Todos / Tickets / Spaze), composing the module
+TUIs rather than reimplementing them. Every module also ships standalone:
+
+| Module | Standalone TUI | Status |
+|---|---|---|
+| Todos | `todoz` | shipped 2026-07-05 |
+| Notes | `notez tree` | next: last unported legacy surface |
+| Dashboard | `fleetz` | exists; realtime + worktrees roadmap in its README |
+| Spaze | `spaze` | exists (was TUI-first) |
+| Tickets | `ticketz` | to build: ratatui kanban over `gh`, reusing the desktop's lane mapping |
+
+Build order toward the umbrella: 1) `notez tree` port, 2) `ticketz` TUI,
+3) extract the fleetz shared core (also unblocks the repoz TUI), 4) the
+epoz umbrella shell that mounts the module TUIs as library crates. Until 4
+lands, a tmux/zellij layout preset over the standalone TUIs is the
+zero-code stand-in. notez2 stays the CLI/core (notez-core is the data
+layer under all of it).
+
+This also resolves the earlier "repoz big brother" naming confusion: the
+standalone ratatui multi-repo dashboard TUI that used to hold the epoz name
+was renamed **fleetz** and lives on as a repoz sibling (and becomes the
+umbrella's Dashboard module).
 
 The sibling CLI tools share the same git-backed, GitHub-identity discipline:
 
@@ -666,4 +705,9 @@ This document describes the target design. Initial implementation focuses on:
 5. Stubs for `tree`, `todo`, `edit`, `search`, `nav`, `sync` (return not-implemented)
 6. Panic-safe TUI entry/leave helpers (carried from notez-cli)
 
-The TUI tree and todo browsers come next, ported from notez-cli with the storage layer swapped.
+Progress since: the storage layer, migration, desktop app (Epoz Desktop),
+todoz TUI (2026-07-05, dirty-source saves), full-text search, project docs
+sources, and the tree-browser TUI (2026-07-06, dirty-only `.tags` writes)
+are done. Every legacy notez-cli surface is now ported; `edit` and `nav`
+remain stubs. Next per the umbrella plan: ticketz TUI, fleetz-core, the
+epoz umbrella shell.
