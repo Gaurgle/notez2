@@ -64,8 +64,13 @@ fn main() -> ExitCode {
     let result: anyhow::Result<()> = match cmd {
         Commands::Add { title, r#in, in_local }
         | Commands::Znote { title, r#in, in_local } => {
-            commands::add::run(title, r#in, in_local, scope, &config).map(|p| {
-                println!("Created: {}", p.display());
+            commands::add::run(title, r#in, in_local, scope, &config).map(|created| {
+                println!("Created: {}", created.path.display());
+                // Legacy UX: no inline body means "write it now" - open the
+                // editor on the fresh note. With a body, stay silent.
+                if !created.had_body {
+                    commands::add::open_created(&created.path, &config);
+                }
             })
         }
         Commands::Log { message } | Commands::Zlog { message } => {

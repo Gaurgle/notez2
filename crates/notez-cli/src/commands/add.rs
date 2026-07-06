@@ -14,6 +14,14 @@ use notez_core::config::Config;
 use notez_core::core::{Note, Scope, project, resolve};
 use notez_core::util::sanitize;
 
+/// Result of `add`: where the note landed and whether an inline body was
+/// given. Without a body the editor opens on the fresh note (legacy UX);
+/// with one, the file is written silently.
+pub struct Created {
+    pub path: PathBuf,
+    pub had_body: bool,
+}
+
 /// Write the new note to disk and return its absolute path.
 pub fn run(
     title_words: Vec<String>,
@@ -21,9 +29,10 @@ pub fn run(
     in_local: bool,
     scope: Scope,
     config: &Config,
-) -> Result<PathBuf> {
+) -> Result<Created> {
     let (title, body) = cli::split_title_body(title_words);
     let title = title.unwrap_or_else(|| "untitled".to_string());
+    let had_body = body.is_some();
 
     let note = Note::new(title, body);
     let dir = match &in_arg {
@@ -47,7 +56,24 @@ pub fn run(
     std::fs::write(&path, note.rendered())
         .with_context(|| format!("failed to write note {}", path.display()))?;
 
-    Ok(path)
+    Ok(Created { path, had_body })
+}
+
+/// Open a freshly created note in the configured editor (nvim lands on the
+/// body line in insert mode via `new_note_args`). Best-effort: the note is
+/// already on disk, so a missing editor warns instead of failing the add.
+pub fn open_created(path: &Path, config: &Config) {
+    let status = std::process::Command::new(&config.editor.command)
+        .args(&config.editor.new_note_args)
+        .arg(path)
+        .status();
+    if let Err(e) = status {
+        eprintln!(
+            "notez: could not open editor {:?}: {e}; note is at {}",
+            config.editor.command,
+            path.display(),
+        );
+    }
 }
 
 /// The root `--in` resolves under: global by default, the current scope's
@@ -167,7 +193,8 @@ mod tests {
             Scope::Global,
             &config,
         )
-        .unwrap();
+        .unwrap()
+        .path;
 
         assert!(path.exists());
         let parent = path.parent().unwrap();
@@ -194,7 +221,7 @@ mod tests {
 
         std::env::set_current_dir(saved).unwrap();
 
-        let path = result.unwrap();
+        let path = result.unwrap().path;
         assert!(path.exists());
         assert!(path.to_string_lossy().contains("/.notez/00_quick-notes/"));
     }
@@ -213,7 +240,7 @@ mod tests {
 
         std::env::set_current_dir(saved).unwrap();
 
-        let path = result.unwrap();
+        let path = result.unwrap().path;
         // No git project => personal falls back to the global notez_root.
         let expected_parent = notez_root.path().join("00_quick-notes");
         assert_eq!(path.parent().unwrap(), expected_parent);
@@ -239,7 +266,7 @@ mod tests {
         let result = run(vec!["note".into()], None, false, Scope::Personal, &config);
         std::env::set_current_dir(saved).unwrap();
 
-        let path = result.unwrap();
+        let path = result.unwrap().path;
         assert!(
             path.to_string_lossy().contains("/personal/"),
             "expected path under personal/, got {:?}",
@@ -257,7 +284,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let config = config_in(dir.path());
 
-        let path = run(
+        let created = run(
             vec!["title".into(), "this is the body".into()],
             None,
             false,
@@ -265,7 +292,8 @@ mod tests {
             &config,
         )
         .unwrap();
-        let body = std::fs::read_to_string(&path).unwrap();
+        assert!(created.had_body);
+        let body = std::fs::read_to_string(&created.path).unwrap();
         assert!(body.contains("# title"));
         assert!(body.contains("this is the body"));
     }
@@ -275,8 +303,9 @@ mod tests {
         let dir = tempdir().unwrap();
         let config = config_in(dir.path());
 
-        let path = run(vec![], None, false, Scope::Global, &config).unwrap();
-        let body = std::fs::read_to_string(&path).unwrap();
+        let created = run(vec![], None, false, Scope::Global, &config).unwrap();
+        assert!(!created.had_body, "no inline body: the editor should open");
+        let body = std::fs::read_to_string(&created.path).unwrap();
         assert!(body.starts_with("# untitled\n"));
     }
 
@@ -324,7 +353,8 @@ mod tests {
             Scope::Global,
             &config,
         )
-        .unwrap();
+        .unwrap()
+        .path;
         assert_eq!(path.parent().unwrap(), root.path().join("ideas"));
     }
 
