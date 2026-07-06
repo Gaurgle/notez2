@@ -14,6 +14,17 @@ use walkdir::WalkDir;
 use crate::config::{Config, NotezMetadata, ProjectRegistry};
 use crate::core::{Project, Scope};
 
+/// What kind of source a [`NoteEntry`] came from. `Doc` entries are markdown
+/// found in a project's `docs/` directory: repo documentation surfaced next
+/// to notes, not notes themselves.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SourceKind {
+    #[default]
+    Note,
+    Doc,
+}
+
 /// A single discoverable note or content directory.
 ///
 /// Entries carry their scope so the TUI can render the lock/user/globe/home
@@ -29,6 +40,9 @@ pub struct NoteEntry {
     /// Owning project name. `None` for global-only notes that do not belong
     /// to any project.
     pub project: Option<String>,
+    /// Note vs project doc. Defaults to `Note` for wire compatibility.
+    #[serde(default)]
+    pub kind: SourceKind,
 }
 
 /// Walk a directory recursively and collect every `.md` file under it.
@@ -99,6 +113,7 @@ pub fn collect_in_scope(
             name: name.to_string(),
             scope,
             project: project_name.clone(),
+            kind: SourceKind::Note,
         });
     }
     entries
@@ -143,6 +158,14 @@ pub fn collect_all(
         for path in walk_markdown(&personal_dir) {
             push_entry(&mut out, path, Scope::Personal, Some(&project.name));
         }
+        // Repo documentation: surfaced alongside notes so everything about a
+        // project is reachable from one place, but tagged Doc so UIs can
+        // label it. Committed with the repo, hence Public scope.
+        if config.paths.project_docs {
+            for path in walk_markdown(&local_path.join("docs")) {
+                push_doc(&mut out, path, Some(&project.name));
+            }
+        }
     }
 
     let global_root = config.notez_root_path();
@@ -166,6 +189,20 @@ pub fn collect_all(
 }
 
 fn push_entry(out: &mut Vec<NoteEntry>, path: PathBuf, scope: Scope, project: Option<&str>) {
+    push_with_kind(out, path, scope, project, SourceKind::Note);
+}
+
+fn push_doc(out: &mut Vec<NoteEntry>, path: PathBuf, project: Option<&str>) {
+    push_with_kind(out, path, Scope::Public, project, SourceKind::Doc);
+}
+
+fn push_with_kind(
+    out: &mut Vec<NoteEntry>,
+    path: PathBuf,
+    scope: Scope,
+    project: Option<&str>,
+    kind: SourceKind,
+) {
     let Some(name) = path.file_name().and_then(|s| s.to_str()) else {
         return;
     };
@@ -174,6 +211,7 @@ fn push_entry(out: &mut Vec<NoteEntry>, path: PathBuf, scope: Scope, project: Op
         name: name.to_string(),
         scope,
         project: project.map(|s| s.to_string()),
+        kind,
     });
 }
 
@@ -193,6 +231,29 @@ mod tests {
         let mut c = Config::defaults();
         c.paths.notez_root = root.to_string_lossy().into_owned();
         c
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn collect_all_surfaces_project_docs_as_doc_kind() {
+        let tmp = tempdir().unwrap();
+        unsafe { std::env::set_var("XDG_CONFIG_HOME", tmp.path().join("xdg")) };
+        let notez_root = tmp.path().join("root");
+        let repo = tmp.path().join("repo");
+        touch(&repo.join("docs").join("hardware.md"));
+        touch(&repo.join("notez").join("pub.md"));
+
+        let config = config_with_root(&notez_root);
+        let mut registry = crate::config::ProjectRegistry::default();
+        registry.attach("proj", &repo);
+
+        let entries = collect_all(&config, &registry, &Default::default()).unwrap();
+        let doc = entries.iter().find(|e| e.name == "hardware.md").unwrap();
+        assert_eq!(doc.kind, SourceKind::Doc);
+        assert_eq!(doc.scope, Scope::Public);
+        assert_eq!(doc.project.as_deref(), Some("proj"));
+        let note = entries.iter().find(|e| e.name == "pub.md").unwrap();
+        assert_eq!(note.kind, SourceKind::Note);
     }
 
     #[test]

@@ -40,6 +40,14 @@ pub struct PathsConfig {
     pub quick_notes_dir: String,
     /// Subdirectory name for daily logs (e.g. `"01_daily-logs"`).
     pub daily_logs_dir: String,
+    /// Surface each registered project's `docs/*.md` alongside its notes
+    /// (tagged as docs, not notes). On by default.
+    #[serde(default = "default_true")]
+    pub project_docs: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,6 +76,7 @@ impl Config {
                 notez_root: "~/notez".to_string(),
                 quick_notes_dir: "00_quick-notes".to_string(),
                 daily_logs_dir: "01_daily-logs".to_string(),
+                project_docs: true,
             },
             editor: EditorConfig {
                 command: editor,
