@@ -135,6 +135,10 @@ When the user opens the global tree (`notez -g tree`) or global todoz (`todoz -g
 
 A project whose `local_path` does not exist on this machine renders as dimmed with a "(not attached)" marker, so the user knows the metadata exists but the source is unreachable. Notes for that project are not shown.
 
+### CLI and desktop read the same board
+
+The global todo board (GLOBAL → `_todos/<category>` → each project's personal/public/local) is built by a single function, `notez_core::todo::load_board`. The TUI (`todoz -g`) and the desktop app's `load_todo_board` command both call it, so `_todos/<category>/TODO.md` categories appear identically in the CLI and the GUI. Legacy `_todos/` boards carried over from notez-cli need no migration: `migrate.rs` treats `_todos` as a special dir and leaves it untouched, and `load_board` always shows it.
+
 ## Sync
 
 `notez sync` is a thin wrapper:
