@@ -11,17 +11,30 @@ use anyhow::Result;
 use crate::config::Config;
 use crate::core::{Project, Scope};
 
+/// Root of the project the cwd belongs to.
+///
+/// The git toplevel when inside a repo, otherwise the cwd itself. Scratch
+/// and public stores hang off this rather than off the cwd, so a note taken
+/// three directories deep lands in the project's one store instead of
+/// spawning a new store beside it.
+fn project_root() -> Result<PathBuf> {
+    match Project::try_detect() {
+        Some(p) => Ok(p.root),
+        None => Ok(std::env::current_dir()?),
+    }
+}
+
 /// Resolve the root directory for the given scope.
 ///
-/// - `Local`: `<cwd>/.notez/` (always; never inspects project)
-/// - `Public`: `<cwd>/notez/` (always; never inspects project)
+/// - `Local`: `<project root>/.notez/` (git toplevel, else cwd)
+/// - `Public`: `<project root>/notez/` (git toplevel, else cwd)
 /// - `Personal`: `<notez_root>/personal/<project>/` if cwd is inside a git
 ///   repo; otherwise falls back to `<notez_root>/` (same as Global).
 /// - `Global`: `<notez_root>/`
 pub fn root(scope: Scope, config: &Config) -> Result<PathBuf> {
     let root = match scope {
-        Scope::Local => std::env::current_dir()?.join(".notez"),
-        Scope::Public => std::env::current_dir()?.join("notez"),
+        Scope::Local => project_root()?.join(".notez"),
+        Scope::Public => project_root()?.join("notez"),
         Scope::Personal => match Project::try_detect() {
             Some(p) => config.notez_root_path().join("personal").join(&p.name),
             None => config.notez_root_path(),
@@ -144,5 +157,63 @@ mod tests {
 
         let r = quick_notes(Scope::Global, &config).unwrap();
         assert_eq!(r, dir.path().join("00_qn"));
+    }
+
+    /// Create a git repo with a nested subdirectory. Returns (repo root, subdir),
+    /// both canonicalized so they compare equal to what git reports.
+    fn git_repo_with_subdir() -> (tempfile::TempDir, PathBuf, PathBuf) {
+        let dir = tempdir().unwrap();
+        let toplevel = dir.path().canonicalize().unwrap();
+        std::process::Command::new("git")
+            .args(["init", "--quiet"])
+            .current_dir(&toplevel)
+            .status()
+            .unwrap();
+        let sub = toplevel.join("crates").join("deep");
+        std::fs::create_dir_all(&sub).unwrap();
+        (dir, toplevel, sub)
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn local_resolves_to_project_root_from_a_subdirectory() {
+        let (_guard, toplevel, sub) = git_repo_with_subdir();
+        let config = Config::defaults();
+
+        let saved = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&sub).unwrap();
+        let r = root(Scope::Local, &config);
+        std::env::set_current_dir(saved).unwrap();
+
+        assert_eq!(r.unwrap(), toplevel.join(".notez"));
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn public_resolves_to_project_root_from_a_subdirectory() {
+        let (_guard, toplevel, sub) = git_repo_with_subdir();
+        let config = Config::defaults();
+
+        let saved = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&sub).unwrap();
+        let r = root(Scope::Public, &config);
+        std::env::set_current_dir(saved).unwrap();
+
+        assert_eq!(r.unwrap(), toplevel.join("notez"));
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn daily_logs_follow_the_project_root_from_a_subdirectory() {
+        let (_guard, toplevel, sub) = git_repo_with_subdir();
+        let mut config = Config::defaults();
+        config.paths.daily_logs_dir = "01_daily-logs".to_string();
+
+        let saved = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&sub).unwrap();
+        let r = daily_logs(Scope::Local, &config);
+        std::env::set_current_dir(saved).unwrap();
+
+        assert_eq!(r.unwrap(), toplevel.join(".notez").join("01_daily-logs"));
     }
 }
