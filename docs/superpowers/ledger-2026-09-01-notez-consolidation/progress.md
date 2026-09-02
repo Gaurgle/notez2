@@ -76,3 +76,29 @@ Phase 1 Task 1.1 Step 1 is DONE (vault checkpoint), out of plan order:
 
 NEXT: Task 2.2 (logz). Ruling 1 applies: register `pub mod logz;` BEFORE the
 first test run. Then 2.3 (nav) strictly before 2.4 (edit), per ruling 2.
+
+## 2026-09-02, big machine (session outside the SDD run)
+
+Vault: origin/main 114ea17 (merge of the checkpoint with the July migration)
+verified to keep the migration intact. Pulled, then removed the three legacy
+mirror dirs the old notez-cli binary had recreated on the small machine
+(18_career, 19_rustfinity, 20_file-gatherer; absolute /Users/at-a symlinks).
+Vault now at 8151067, pushed.
+
+Phase 3 done: `install.sh` ported from notez-cli (build, cp, codesign,
+8 alias symlinks incl. zlogs). Ran on the big machine; installed binary is
+origin/master 5e27ad4 with the Task 2.1 resolve fix.
+
+Registry fixed on the big machine: `career` and `wireless-test-platform`
+repointed from subdirectories to their git toplevels, matching where
+resolve.rs now roots Local/Public stores. Empty legacy
+`career/applications/marshall/.notez` removed.
+
+Verified: `-l log` and `-p add` from a 2-deep subdirectory of a fresh git
+repo land at `<root>/.notez/` and `<root>/notez/`.
+
+Phase 5 partial: global CLAUDE.md (claude-config) now describes the scope
+model and points at notez2.
+
+Handover for the small machine: docs/handover-2026-09-02-small-machine.md.
+Phase 1 still gated on both machines repointing the vault remote.

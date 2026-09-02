@@ -89,9 +89,12 @@ are dropped (those files already live in the repo), and the projects are
 attached to the per-machine registry.
 
 ```bash
-cargo build --release
-./target/release/notez --help
+./install.sh            # release build, ~/.local/bin/notez, codesign, alias symlinks
+notez --help
 ```
+
+Run `install.sh` on every machine after pulling. The vault layout assumes both
+machines run the same binary; see `docs/handover-2026-09-02-small-machine.md`.
 
 See [DESIGN.md](DESIGN.md) for the architecture, scope model, and test-scenario matrix. Core logic is covered by unit tests (`cargo test`).
 
