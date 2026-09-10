@@ -78,9 +78,7 @@ fn main() -> ExitCode {
                 println!("Appended to: {}", p.display());
             })
         }
-        Commands::Logz | Commands::Logs => Err(anyhow::anyhow!(
-            "browsing daily logs is not yet implemented in notez2; coming in the next milestone"
-        )),
+        Commands::Logz | Commands::Logs => commands::logz::run(scope, &config),
         Commands::Mkdir { name } => commands::mkdir::run(name, scope, &config).map(|p| {
             println!("Created: {}", p.display());
         }),
@@ -90,7 +88,7 @@ fn main() -> ExitCode {
         Commands::Tree | Commands::Treez => commands::tree::run(scope, &config),
         Commands::Setup => commands::setup::run(),
         Commands::Demo { view: _ } => Err(anyhow::anyhow!(
-            "demo is not yet implemented in notez2; coming in the next milestone"
+            "demo is not implemented; it was a screenshot helper in the legacy CLI"
         )),
         Commands::Completions { shell } => commands::completions::run(&shell),
         Commands::Init { shell } => commands::init::run(&shell),
@@ -98,7 +96,7 @@ fn main() -> ExitCode {
             commands::todo::run(item, scope, &config)
         }
         Commands::Edit { term } | Commands::Editz { term } => {
-            commands::edit::run(term, &config)
+            commands::edit::run(term, scope, &config)
         }
         Commands::Nav => commands::nav::run(&config),
 
@@ -213,12 +211,12 @@ fn print_help() {
     cmd("notez add --in <dir>", "create inside a subdirectory (bare --in: fzf picker)");
     cmd("notez -p add [title]", "create public note");
     cmd("notez -g add [title]", "create global note");
-    cmd("notez edit [term]", "open an existing note (not ported yet)");
+    cmd("notez edit [term]", "open an existing note (fuzzy match)");
     println!();
 
     println!("  {}", mauve.apply_to("Daily Logs"));
     cmd("notez log <message>", "append to today's log");
-    cmd("notez logz / logs", "browse daily logs (not ported yet)");
+    cmd("notez logz / logs", "browse daily logs");
     println!();
 
     println!("  {}", mauve.apply_to("Todos"));
@@ -228,6 +226,7 @@ fn print_help() {
 
     println!("  {}", mauve.apply_to("Tree Browser"));
     cmd("notez tree / treez", "interactive tree browser (TUI)");
+    cmd("notez nav", "pick a vault directory and open it");
     cmd("notez search <term>", "search content");
     cmd("notez mkdir <name>", "create a subdirectory");
     println!();
