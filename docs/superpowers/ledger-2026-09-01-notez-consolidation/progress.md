@@ -102,3 +102,41 @@ model and points at notez2.
 
 Handover for the small machine: docs/handover-2026-09-02-small-machine.md.
 Phase 1 still gated on both machines repointing the vault remote.
+
+## 2026-09-10, big machine (session outside the SDD run)
+
+Phase 2 completed. Tasks 2.2 to 2.5 implemented on `master` directly, not in
+the phase2 worktree, which is stale relative to `f51fedd`.
+
+Task 2.2 (logz): RED was the predicted `cannot find function prepare`, with
+`pub mod logz;` registered ahead of the first test run per Ruling 1. New file
+`commands/logz.rs` with `prepare` / `open_dir` / `run`, dispatch wired at
+`main.rs:81`, help line updated. `open_dir` is `pub` because 2.3 consumes it.
+
+Task 2.3 (nav): dispatch already read `commands::nav::run(&config)` and the
+signature was kept, so no dispatch edit was needed, as the brief predicted.
+Declaring `pub mod picker;` compiled `commands/picker.rs` for the first time;
+its three dormant tests (`parses_leading_index`,
+`single_candidate_skips_the_picker`, `empty_candidates_bail`) all pass with no
+fixes needed. Ruling 2 held: 2.3 landed strictly before 2.4.
+
+Task 2.4 (edit): `filter_by_term` plus a `collect_in_scope`-backed `run`.
+Dispatch now passes `scope`. Help line updated.
+
+Task 2.5: demo message reworded, no longer promises a milestone.
+
+Beyond the briefs, small and deliberate: `nav` had no entry in the help output
+at all (it was stubbed and undocumented), so one was added under Tree Browser.
+README's "Still stubbed" list and command table updated to match reality.
+
+Tests: 208 workspace tests pass, 0 failed, up from 199. The added 9 are 1 logz,
+2 nav, 3 picker (previously dormant) and 3 edit.
+
+`cargo fmt --check` reports drift in 20 files across the crate, including two
+lines in the new `logz.rs`. This is pre-existing: the code is written in 2024
+import style against a 2021 edition. New imports match their siblings exactly
+(`{Scope, resolve}`, same shape as `log.rs`), so the repo was not reformatted
+as a drive-by. Clippy reports nothing in the new or changed files.
+
+NEXT: Phase 1, still gated on both machines repointing the vault remote before
+`Gaurgle/notez2` can take the `notez` name.

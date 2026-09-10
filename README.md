@@ -58,7 +58,8 @@ notez attach     notez detach      notez list
 notez sync       notez setup       notez completions
 notez init       notez --help      notez migrate-from-legacy
 notez search     todoz             todoz -g
-notez tree       notez -g tree
+notez tree       notez -g tree     notez edit
+notez nav        notez logz        notez logs
 ```
 
 **todoz** is the full interactive board TUI (tags, subtasks, drag-to-reorder,
@@ -79,8 +80,18 @@ open-in-editor). Tag changes write only `.tags` roots that actually changed.
 the current scope's root with `--in-local`); bare `--in` opens an fzf
 picker. Scratch writes (`-l`) auto-gitignore `.notez/` in the repo.
 
-Still stubbed (all exit 1 with a clear message): `edit`, `nav`,
-`logz`/`logs` (browse daily logs), `demo`.
+**notez edit [term]** (alias `editz`) opens an existing note. Candidates come
+from the scope model, so it sees exactly the notes the rest of the tool
+considers in scope; a term matching one note skips the picker.
+
+**notez nav** picks a directory in the vault and opens it, with `personal/`
+expanded one level so every project is one hop away.
+
+**notez logz** / `logs` / `zlogs` opens the daily-logs directory for the
+current scope, creating it on first use.
+
+Still stubbed (exits 1 with a clear message): `demo`, a screenshot helper
+from the legacy CLI, not ported by decision.
 
 `notez migrate-from-legacy` (with `--dry-run`) is the one-time port of a
 notez-cli layout: numbered `NN_project` mirror dirs move to `personal/<project>/`,
