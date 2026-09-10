@@ -141,10 +141,10 @@ full plan. Status as of today:
 | Phase | Status |
 | --- | --- |
 | 1. naming (vault -> `notez-vault`, notez2 -> `notez`) | **not started**, gated on step 1 below |
-| 2. close the stubs (`logz`, `nav`, `edit`) | 2.1 done and merged; 2.2 to 2.5 open |
+| 2. close the stubs (`logz`, `nav`, `edit`) | **done** 2026-09-10, all of 2.1 to 2.5 |
 | 3. install script | done today (`install.sh`) |
 | 4. migrate the vault | done on the big machine in July; the small machine only pulls |
-| 5. docs and config | global CLAUDE.md updated today; branch rename to `main` open |
+| 5. docs and config | **done** 2026-09-10 (see addendum); branch rename to `main` open |
 
 Phase 1 sequence, unchanged from the spec. The one irreversible-if-wrong
 step is creating a new `Gaurgle/notez` while any machine still pushes its
@@ -163,3 +163,59 @@ The desktop app in `app/` (epoz) already depends on the core by path. The
 plan is one core, three fronts: the `notez` CLI, the epoz desktop app, and
 later an epoz TUI. All three read the same vault and the same scope model,
 which is why the layout has to be identical on every machine first.
+
+---
+
+## Addendum, 2026-09-10 (big machine)
+
+Written because the original above is notez-only, and the small machine also
+needs a dotfiles and claude-config catch-up that has to happen in a specific
+order. This addendum supersedes the status table above where they disagree.
+
+### What changed since 2026-09-02
+
+- **Phase 2 is done.** `logz`, `nav` and `edit` are implemented and no longer
+  exit 1. Only `demo` stays stubbed, by decision. 208 workspace tests pass.
+  The small machine picks these up when it runs `./install.sh`.
+- **claude-config was the real source of the cross-machine drift.** The
+  "global CLAUDE.md updated today" line in the table above described an edit
+  that was written on 2026-09-02 and never committed. The small machine
+  therefore never received it, and on 2026-09-10 it moved the old April text
+  into `skills/notez/SKILL.md`. That skill is now corrected and pushed.
+- **fleetz could not see repos directly under `$HOME`.** A dead `.git`
+  directory in `$HOME` (no HEAD, config, objects or index) made its home
+  sweep stop immediately. Moved aside on the big machine. If the small
+  machine shows repos as "not cloned" that clearly exist, check for `~/.git`.
+
+### Read this before trusting the notez skill
+
+Until step 2 below completes, this machine's `skills/notez/SKILL.md` is the
+**pre-correction** version: it points at the deprecated `~/Repos/notez-cli`,
+describes numbered vault directories, and says `todoz` resolves against the
+cwd. All three are wrong. Pull claude-config first, then trust it.
+
+### Full order for the small machine
+
+Steps 3 and 4 are the original handover above, unchanged. Do not reorder them.
+
+1. `dotup` (dotfiles, and the fleetz config that now scans `~/claude-config`)
+2. `git -C ~/claude-config status --short`, commit anything local, then
+   `git -C ~/claude-config pull --rebase`
+3. Replace the notez binary: `cd ~/Repos/notez2 && git pull --ff-only && ./install.sh`
+   **This must happen before any notez command touches the vault.** The old
+   binary recreates the legacy mirror dirs on every `-g`.
+4. Vault, registry, and the three rescued files: sections 2 to 6 above.
+5. `pinz sync` if you want the board's `sync` world, which carries a short
+   version of this list.
+
+Expect step 2 to hit uncommitted local changes to `CLAUDE.md` or
+`settings.json`. That is what happened on the big machine. Commit them, do
+not discard them, and reconcile against what upstream already rewrote.
+
+### Still open after all of the above
+
+Phase 1, the rename, remains gated on **both** machines repointing their
+`~/notez` remote to `notez-vault` before `Gaurgle/notez2` takes the `notez`
+name. Two decisions are also unanswered: whether `notez-core` is published to
+crates.io, and whether real distribution (`cargo install`, prebuilt binaries,
+a Homebrew formula) is in scope.
