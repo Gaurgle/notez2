@@ -52,14 +52,15 @@ fn main() -> ExitCode {
         return finish(commands::nav::run(&config));
     }
 
-    let Some(cmd) = parsed.command else {
-        println!(
-            "notez2 milestone 0. Run `notez --help` for usage, or `notez setup` to begin."
-        );
-        return ExitCode::SUCCESS;
-    };
-
     let scope = Scope::from_flags(parsed.global, parsed.public, parsed.local);
+
+    // No subcommand: open the tree browser. notez-cli made a bare `notez`,
+    // `notez -g` or `notez -p` open a browser on the resolved scope, and
+    // `tree` is that command's successor here. Without this, the habit of
+    // typing `notez -g` hits a dead end.
+    let Some(cmd) = parsed.command else {
+        return finish(commands::tree::run(scope, &config));
+    };
 
     let result: anyhow::Result<()> = match cmd {
         Commands::Add { title, r#in, in_local }
@@ -225,6 +226,7 @@ fn print_help() {
     println!();
 
     println!("  {}", mauve.apply_to("Tree Browser"));
+    cmd("notez", "open the browser on the current scope");
     cmd("notez tree / treez", "interactive tree browser (TUI)");
     cmd("notez nav", "pick a vault directory and open it");
     cmd("notez search <term>", "search content");
